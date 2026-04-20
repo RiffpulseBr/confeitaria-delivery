@@ -490,8 +490,11 @@ def _normalizar_mapeamento_ifood(mapping: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-@app.get("/")
-def read_root() -> dict[str, str]:
+@app.get("/", include_in_schema=False)
+def read_root() -> Any:
+    index_file = FRONTEND_DIST_DIR / "index.html"
+    if index_file.exists():
+        return FileResponse(index_file)
     return {"status": "API Confeitaria online e rodando!"}
 
 
