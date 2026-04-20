@@ -1,29 +1,40 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle2, ChefHat, Clock, Loader2 } from 'lucide-react'
 
-import { supabase } from '../supabaseClient'
+import { getSupabaseClient } from '../supabaseClient'
 
 function FilaPedidos() {
   const [pedidos, setPedidos] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let subscription
+
     buscarPedidos()
 
-    const subscription = supabase
-      .channel('pedidos_channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
-        buscarPedidos()
-      })
-      .subscribe()
+    try {
+      const supabase = getSupabaseClient()
+      subscription = supabase
+        .channel('pedidos_channel')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos' }, () => {
+          buscarPedidos()
+        })
+        .subscribe()
+    } catch (error) {
+      console.error('Erro ao iniciar realtime dos pedidos:', error)
+    }
 
     return () => {
-      supabase.removeChannel(subscription)
+      if (subscription) {
+        const supabase = getSupabaseClient()
+        supabase.removeChannel(subscription)
+      }
     }
   }, [])
 
   const buscarPedidos = async () => {
     try {
+      const supabase = getSupabaseClient()
       const { data, error } = await supabase
         .from('pedidos')
         .select(`
@@ -51,6 +62,7 @@ function FilaPedidos() {
 
   const concluirPedido = async (id) => {
     try {
+      const supabase = getSupabaseClient()
       const { error } = await supabase.from('pedidos').update({ status: 'concluido' }).eq('id', id)
 
       if (error) throw error

@@ -29,6 +29,7 @@ load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 IFOOD_BASE_URL = os.getenv("IFOOD_BASE_URL", "https://merchant-api.ifood.com.br")
 IFOOD_CLIENT_ID = os.getenv("IFOOD_CLIENT_ID")
 IFOOD_CLIENT_SECRET = os.getenv("IFOOD_CLIENT_SECRET")
@@ -503,7 +504,17 @@ def healthcheck() -> dict[str, Any]:
     return {
         "status": "ok",
         "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
+        "supabase_frontend_configured": bool(SUPABASE_URL and SUPABASE_ANON_KEY),
         "ifood_configured": bool(IFOOD_CLIENT_ID and IFOOD_CLIENT_SECRET),
+    }
+
+
+@app.get("/api/runtime-config")
+def runtime_config() -> dict[str, str]:
+    return {
+        "apiBaseUrl": "",
+        "supabaseUrl": SUPABASE_URL or "",
+        "supabaseAnonKey": SUPABASE_ANON_KEY or "",
     }
 
 

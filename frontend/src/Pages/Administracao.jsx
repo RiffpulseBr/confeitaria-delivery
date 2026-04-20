@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link2, Loader2, PackagePlus, RefreshCcw, Store, ToggleLeft, ToggleRight } from 'lucide-react'
 
-const API_URL = import.meta.env.VITE_API_URL
+import { getApiBaseUrl } from '../config'
 
 function currency(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -49,8 +49,8 @@ function Administracao() {
 
     try {
       const [insumosRes, merchantsRes] = await Promise.all([
-        fetch(`${API_URL}/api/estoque/insumos`),
-        fetch(`${API_URL}/api/ifood/merchants`),
+        fetch(`${getApiBaseUrl()}/api/estoque/insumos`),
+        fetch(`${getApiBaseUrl()}/api/ifood/merchants`),
       ])
 
       const [insumosData, merchantsData] = await Promise.all([insumosRes.json(), merchantsRes.json()])
@@ -67,7 +67,7 @@ function Administracao() {
         const statuses = await Promise.all(
           merchantList.map(async (merchant) => {
             try {
-              const response = await fetch(`${API_URL}/api/ifood/merchants/${merchant.id}/status`)
+              const response = await fetch(`${getApiBaseUrl()}/api/ifood/merchants/${merchant.id}/status`)
               const data = await response.json()
               return [merchant.id, data]
             } catch {
@@ -96,8 +96,8 @@ function Administracao() {
     const carregarBaseAdmin = async () => {
       try {
         const [produtosRes, mappingsRes] = await Promise.all([
-          fetch(`${API_URL}/api/produtos`),
-          fetch(`${API_URL}/api/ifood/item-mappings`),
+          fetch(`${getApiBaseUrl()}/api/produtos`),
+          fetch(`${getApiBaseUrl()}/api/ifood/item-mappings`),
         ])
 
         const [produtosData, mappingsData] = await Promise.all([produtosRes.json(), mappingsRes.json()])
@@ -125,7 +125,7 @@ function Administracao() {
     setMensagem('')
 
     try {
-      const response = await fetch(`${API_URL}/api/estoque/entrada`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/estoque/entrada`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -164,7 +164,7 @@ function Administracao() {
     setMensagem('')
 
     try {
-      const response = await fetch(`${API_URL}/api/ifood/merchants/${merchantId}/${action}`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/ifood/merchants/${merchantId}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body:
@@ -199,7 +199,7 @@ function Administracao() {
     setMensagem('')
 
     try {
-      const response = await fetch(`${API_URL}/api/ifood/item-mappings`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/ifood/item-mappings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -223,7 +223,7 @@ function Administracao() {
         observacao: '',
       }))
 
-      const mappingsRes = await fetch(`${API_URL}/api/ifood/item-mappings`)
+      const mappingsRes = await fetch(`${getApiBaseUrl()}/api/ifood/item-mappings`)
       const mappingsData = await mappingsRes.json()
       setMapeamentos(Array.isArray(mappingsData) ? mappingsData : [])
     } catch (error) {

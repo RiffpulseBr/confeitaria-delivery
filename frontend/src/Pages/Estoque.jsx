@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Loader2, PackageCheck, PackageSearch } from 'lucide-react'
 
-import { supabase } from '../supabaseClient'
+import { getSupabaseClient } from '../supabaseClient'
 
 function Estoque() {
   const [itensEstoque, setItensEstoque] = useState([])
@@ -13,6 +13,7 @@ function Estoque() {
 
   const buscarEstoque = async () => {
     try {
+      const supabase = getSupabaseClient()
       const { data, error } = await supabase
         .from('estoque')
         .select(`

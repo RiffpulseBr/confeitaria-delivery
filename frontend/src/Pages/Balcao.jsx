@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Minus, PackageCheck, Plus, ShoppingBasket, Trash2 } from 'lucide-react'
+import { getApiBaseUrl } from '../config'
 
 function Balcao() {
   const [produtos, setProdutos] = useState([])
@@ -8,7 +9,7 @@ function Balcao() {
   const [enviando, setEnviando] = useState(false)
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL}/api/produtos`)
+    fetch(`${getApiBaseUrl()}/api/produtos`)
       .then((res) => res.json())
       .then((data) => {
         setProdutos(data)
@@ -75,7 +76,7 @@ function Balcao() {
     }
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/pedidos`, {
+      const res = await fetch(`${getApiBaseUrl()}/api/pedidos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(pedidoCompleto),
