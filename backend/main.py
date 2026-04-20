@@ -34,16 +34,13 @@ IFOOD_CLIENT_ID = os.getenv("IFOOD_CLIENT_ID")
 IFOOD_CLIENT_SECRET = os.getenv("IFOOD_CLIENT_SECRET")
 TOKEN_RENEWAL_MARGIN_SECONDS = 60
 
+supabase_client: Optional[Client] = None
+
 ifood_token_cache: dict[str, Any] = {
     "access_token": None,
     "refresh_token": None,
     "expires_at": None,
 }
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("As variaveis SUPABASE_URL e SUPABASE_SERVICE_KEY/SUPABASE_KEY nao foram encontradas no .env")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI(title="API Sistema Confeitaria")
 
@@ -61,6 +58,22 @@ FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _get_supabase_client() -> Client:
+    global supabase_client
+
+    if supabase_client is not None:
+        return supabase_client
+
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="SUPABASE_URL e SUPABASE_SERVICE_KEY/SUPABASE_KEY precisam estar configurados no backend.",
+        )
+
+    supabase_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return supabase_client
 
 
 def _raise_ifood_not_configured() -> None:
@@ -196,7 +209,7 @@ def _safe_compare_signature(raw_body: bytes, received_signature: Optional[str]) 
 
 
 def _fetch_table_rows(table: str, filters: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
-    query = supabase.table(table).select("*")
+    query = _get_supabase_client().table(table).select("*")
     for key, value in (filters or {}).items():
         query = query.eq(key, value)
     response = query.execute()
@@ -223,7 +236,7 @@ def _record_ifood_event(
         "acknowledged_at": acknowledged_at,
     }
     try:
-        supabase.table("ifood_event_logs").upsert(payload, on_conflict="event_id").execute()
+        _get_supabase_client().table("ifood_event_logs").upsert(payload, on_conflict="event_id").execute()
     except Exception:
         pass
 
@@ -232,7 +245,7 @@ def _mark_acknowledged(event_ids: Iterable[str]) -> None:
     acknowledged_at = _utc_now_iso()
     for event_id in event_ids:
         try:
-            supabase.table("ifood_event_logs").update(
+            _get_supabase_client().table("ifood_event_logs").update(
                 {"acknowledged_at": acknowledged_at, "processing_status": "acknowledged"}
             ).eq("event_id", event_id).execute()
         except Exception:
@@ -249,7 +262,7 @@ def _resolve_product_mapping(merchant_id: Optional[str], item: dict[str, Any]) -
         return None
 
     try:
-        query = supabase.table("ifood_item_mappings").select("*").eq("merchant_item_id", merchant_item_id)
+        query = _get_supabase_client().table("ifood_item_mappings").select("*").eq("merchant_item_id", merchant_item_id)
         if merchant_id:
             query = query.eq("merchant_id", merchant_id)
         response = query.limit(1).execute()
@@ -304,7 +317,7 @@ def _pedido_payload_from_ifood(order_details: dict[str, Any]) -> dict[str, Any]:
 
 def _create_local_order_with_fallback(order_payload: dict[str, Any]) -> str:
     try:
-        response = supabase.table("pedidos").insert(order_payload).execute()
+        response = _get_supabase_client().table("pedidos").insert(order_payload).execute()
         return response.data[0]["id"]
     except Exception:
         fallback_payload = {
@@ -312,7 +325,7 @@ def _create_local_order_with_fallback(order_payload: dict[str, Any]) -> str:
             "status": order_payload["status"],
             "valor_total": order_payload["valor_total"],
         }
-        response = supabase.table("pedidos").insert(fallback_payload).execute()
+        response = _get_supabase_client().table("pedidos").insert(fallback_payload).execute()
         return response.data[0]["id"]
 
 
@@ -328,7 +341,7 @@ def _persist_ifood_order(order_details: dict[str, Any]) -> dict[str, Any]:
         )
 
     try:
-        existing = supabase.table("pedidos").select("id").eq("pedido_externo_id", order_details.get("id")).limit(1).execute()
+        existing = _get_supabase_client().table("pedidos").select("id").eq("pedido_externo_id", order_details.get("id")).limit(1).execute()
         if existing.data:
             return {"pedido_id": existing.data[0]["id"], "created": False}
     except Exception:
@@ -347,10 +360,10 @@ def _persist_ifood_order(order_details: dict[str, Any]) -> dict[str, Any]:
     ]
 
     if itens_para_inserir:
-        supabase.table("itens_pedido").insert(itens_para_inserir).execute()
+        _get_supabase_client().table("itens_pedido").insert(itens_para_inserir).execute()
 
     try:
-        supabase.table("ifood_orders").upsert(
+        _get_supabase_client().table("ifood_orders").upsert(
             {
                 "order_id": order_details.get("id"),
                 "merchant_id": (order_details.get("merchant") or {}).get("id"),
@@ -407,7 +420,7 @@ def _acknowledge_single_event(event_id: str) -> None:
 
 def _get_pending_ifood_event_ids() -> list[str]:
     try:
-        response = supabase.table("ifood_event_logs").select("event_id").is_("acknowledged_at", "null").execute()
+        response = _get_supabase_client().table("ifood_event_logs").select("event_id").is_("acknowledged_at", "null").execute()
         return [item["event_id"] for item in (response.data or []) if item.get("event_id")]
     except Exception:
         return []
@@ -432,14 +445,14 @@ def _update_estoque_quantity(entrada: EstoqueEntradaCreate) -> dict[str, Any]:
     nova_quantidade = quantidade_atual + entrada.quantidade
 
     response = (
-        supabase.table("estoque")
+        _get_supabase_client().table("estoque")
         .update({"quantidade_atual": nova_quantidade, "atualizado_em": _utc_now_iso()})
         .eq("id", item["id"])
         .execute()
     )
 
     try:
-        supabase.table("movimentacoes_estoque").insert(
+        _get_supabase_client().table("movimentacoes_estoque").insert(
             {
                 "estoque_id": item["id"],
                 "produto_id": item.get("produto_id"),
@@ -482,10 +495,19 @@ def read_root() -> dict[str, str]:
     return {"status": "API Confeitaria online e rodando!"}
 
 
+@app.get("/api/health")
+def healthcheck() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "supabase_configured": bool(SUPABASE_URL and SUPABASE_KEY),
+        "ifood_configured": bool(IFOOD_CLIENT_ID and IFOOD_CLIENT_SECRET),
+    }
+
+
 @app.get("/api/produtos")
 def listar_produtos() -> list[dict[str, Any]]:
     try:
-        response = supabase.table("produtos").select("*").eq("ativo", True).execute()
+        response = _get_supabase_client().table("produtos").select("*").eq("ativo", True).execute()
         return response.data
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -499,7 +521,7 @@ def criar_pedido(pedido: PedidoCreate) -> dict[str, Any]:
             "status": "pendente",
             "valor_total": pedido.valor_total,
         }
-        res_pedido = supabase.table("pedidos").insert(novo_pedido).execute()
+        res_pedido = _get_supabase_client().table("pedidos").insert(novo_pedido).execute()
         pedido_id = res_pedido.data[0]["id"]
 
         itens_para_inserir = [
@@ -512,7 +534,7 @@ def criar_pedido(pedido: PedidoCreate) -> dict[str, Any]:
             for item in pedido.itens
         ]
 
-        supabase.table("itens_pedido").insert(itens_para_inserir).execute()
+        _get_supabase_client().table("itens_pedido").insert(itens_para_inserir).execute()
         return {"mensagem": "Pedido criado com sucesso!", "pedido_id": pedido_id}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -522,7 +544,7 @@ def criar_pedido(pedido: PedidoCreate) -> dict[str, Any]:
 def listar_insumos_estoque() -> list[dict[str, Any]]:
     try:
         response = (
-            supabase.table("estoque")
+            _get_supabase_client().table("estoque")
             .select("id, quantidade_atual, alerta_minimo, unidade_medida, produto_id, produtos(nome)")
             .order("quantidade_atual", desc=False)
             .execute()
@@ -550,7 +572,7 @@ def registrar_entrada_mercadoria(entrada: EstoqueEntradaCreate) -> dict[str, Any
 def listar_mapeamentos_ifood() -> list[dict[str, Any]]:
     try:
         response = (
-            supabase.table("ifood_item_mappings")
+            _get_supabase_client().table("ifood_item_mappings")
             .select("id, merchant_id, merchant_item_id, produto_id, observacao, created_at, updated_at, produtos(nome)")
             .order("created_at", desc=True)
             .execute()
@@ -571,7 +593,7 @@ def criar_mapeamento_ifood(payload: IfoodItemMappingCreate) -> dict[str, Any]:
             "updated_at": _utc_now_iso(),
         }
         response = (
-            supabase.table("ifood_item_mappings")
+            _get_supabase_client().table("ifood_item_mappings")
             .upsert(data, on_conflict="merchant_id,merchant_item_id")
             .execute()
         )
