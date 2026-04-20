@@ -3,12 +3,15 @@ import hmac
 import json
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Iterable, Optional
 
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from supabase import Client, create_client
 
 from schemas import (
@@ -51,6 +54,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
 
 
 def _utc_now_iso() -> str:
@@ -683,3 +689,26 @@ def abrir_loja_ifood(merchant_id: str, payload: IfoodOpenStoreRequest) -> Any:
         "message": "Solicitacao de reabertura enviada ao iFood.",
         "interruption_id": interruption_id,
     }
+
+
+if FRONTEND_DIST_DIR.exists():
+    assets_dir = FRONTEND_DIST_DIR / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend-assets")
+
+    public_entries = ["vite.svg", "manifest.webmanifest", "registerSW.js", "sw.js", "workbox-*.js"]
+    for entry in FRONTEND_DIST_DIR.iterdir():
+        if entry.is_file() and any(entry.match(pattern) for pattern in public_entries):
+            route_path = f"/{entry.name}"
+
+            async def serve_public_file(file_path: Path = entry) -> FileResponse:
+                return FileResponse(file_path)
+
+            app.add_api_route(route_path, serve_public_file, methods=["GET"])
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend_app(full_path: str) -> FileResponse:
+        requested_file = FRONTEND_DIST_DIR / full_path
+        if full_path and requested_file.exists() and requested_file.is_file():
+            return FileResponse(requested_file)
+        return FileResponse(FRONTEND_DIST_DIR / "index.html")
