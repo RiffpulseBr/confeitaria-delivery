@@ -5,6 +5,7 @@ import { getApiBaseUrl } from '../config'
 
 function Estoque() {
   const [itensEstoque, setItensEstoque] = useState([])
+  const [produtosProntos, setProdutosProntos] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -13,10 +14,17 @@ function Estoque() {
 
   const buscarEstoque = async () => {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/estoque/insumos`)
-      const data = await response.json()
-      if (!response.ok) throw new Error(data?.detail || 'Falha ao carregar estoque.')
-      setItensEstoque(Array.isArray(data) ? data : [])
+      const [insumosResponse, produtosResponse] = await Promise.all([
+        fetch(`${getApiBaseUrl()}/api/estoque/insumos`),
+        fetch(`${getApiBaseUrl()}/api/estoque/produtos`),
+      ])
+      const [insumosData, produtosData] = await Promise.all([insumosResponse.json(), produtosResponse.json()])
+
+      if (!insumosResponse.ok) throw new Error(insumosData?.detail || 'Falha ao carregar estoque de insumos.')
+      if (!produtosResponse.ok) throw new Error(produtosData?.detail || 'Falha ao carregar estoque de produtos.')
+
+      setItensEstoque(Array.isArray(insumosData) ? insumosData : [])
+      setProdutosProntos(Array.isArray(produtosData) ? produtosData : [])
     } catch (error) {
       console.error('Erro ao buscar estoque:', error)
     } finally {
@@ -39,59 +47,117 @@ function Estoque() {
         <h1 className="text-4xl font-bold">Controle de Estoque</h1>
       </header>
 
-      <div className="bg-white rounded-3xl shadow-xl overflow-hidden flex-1 flex flex-col">
-        <div className="grid grid-cols-12 gap-4 p-6 bg-slate-800 text-white font-bold text-lg uppercase tracking-wider">
-          <div className="col-span-6">Produto</div>
-          <div className="col-span-3 text-center">Status</div>
-          <div className="col-span-3 text-right">Quantidade Atual</div>
+      <div className="grid flex-1 grid-cols-1 gap-8 xl:grid-cols-2">
+        <div className="bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col">
+          <div className="grid grid-cols-12 gap-4 p-6 bg-slate-800 text-white font-bold text-lg uppercase tracking-wider">
+            <div className="col-span-6">Insumo</div>
+            <div className="col-span-3 text-center">Status</div>
+            <div className="col-span-3 text-right">Quantidade Atual</div>
+          </div>
+
+          <div className="overflow-y-auto flex-1 p-2">
+            {itensEstoque.map((item) => {
+              const qtd = Number(item.quantidade_atual)
+              const min = Number(item.alerta_minimo)
+
+              const nivelCritico = qtd <= min / 2
+              const nivelAtencao = qtd > min / 2 && qtd <= min
+
+              return (
+                <div
+                  key={item.id}
+                  className="grid grid-cols-12 gap-4 p-4 items-center border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="col-span-6 font-bold text-xl text-slate-700">
+                    {item.nome || 'Insumo Desconhecido'}
+                  </div>
+
+                  <div className="col-span-3 flex justify-center">
+                    {nivelCritico ? (
+                      <span className="flex items-center gap-1 bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-bold">
+                        <AlertTriangle size={16} /> Comprar Urgente
+                      </span>
+                    ) : nivelAtencao ? (
+                      <span className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-sm font-bold">
+                        <AlertTriangle size={16} /> Estoque Baixo
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-sm font-bold">
+                        <PackageCheck size={16} /> Adequado
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="col-span-3 text-right">
+                    <span className={`text-3xl font-bold ${nivelCritico ? 'text-red-500' : 'text-slate-800'}`}>
+                      {item.quantidade_atual}{' '}
+                      <span className="text-sm text-slate-400 font-medium">{item.unidade_medida || 'un'}</span>
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+
+            {itensEstoque.length === 0 && (
+              <div className="p-12 text-center text-slate-400 text-xl">Nenhum insumo cadastrado no estoque.</div>
+            )}
+          </div>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-2">
-          {itensEstoque.map((item) => {
-            const qtd = Number(item.quantidade_atual)
-            const min = Number(item.alerta_minimo)
+        <div className="bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col">
+          <div className="grid grid-cols-12 gap-4 p-6 bg-emerald-600 text-white font-bold text-lg uppercase tracking-wider">
+            <div className="col-span-6">Produto Pronto</div>
+            <div className="col-span-3 text-center">Status</div>
+            <div className="col-span-3 text-right">Disponivel</div>
+          </div>
 
-            const nivelCritico = qtd <= min / 2
-            const nivelAtencao = qtd > min / 2 && qtd <= min
+          <div className="overflow-y-auto flex-1 p-2">
+            {produtosProntos.map((item) => {
+              const qtd = Number(item.quantidade_atual)
+              const min = Number(item.alerta_minimo)
 
-            return (
-              <div
-                key={item.id}
-                className="grid grid-cols-12 gap-4 p-4 items-center border-b border-slate-100 hover:bg-slate-50 transition-colors"
-              >
-                <div className="col-span-6 font-bold text-xl text-slate-700">
-                  {item.nome || 'Insumo Desconhecido'}
-                </div>
+              const nivelCritico = qtd <= min / 2
+              const nivelAtencao = qtd > min / 2 && qtd <= min
 
-                <div className="col-span-3 flex justify-center">
-                  {nivelCritico ? (
-                    <span className="flex items-center gap-1 bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-bold">
-                      <AlertTriangle size={16} /> Comprar Urgente
+              return (
+                <div
+                  key={item.id}
+                  className="grid grid-cols-12 gap-4 p-4 items-center border-b border-slate-100 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="col-span-6 font-bold text-xl text-slate-700">
+                    {item.produto_nome || 'Produto sem nome'}
+                  </div>
+
+                  <div className="col-span-3 flex justify-center">
+                    {nivelCritico ? (
+                      <span className="flex items-center gap-1 bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-bold">
+                        <AlertTriangle size={16} /> Produzir
+                      </span>
+                    ) : nivelAtencao ? (
+                      <span className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-sm font-bold">
+                        <AlertTriangle size={16} /> Baixo
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-sm font-bold">
+                        <PackageCheck size={16} /> Disponivel
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="col-span-3 text-right">
+                    <span className={`text-3xl font-bold ${nivelCritico ? 'text-red-500' : 'text-slate-800'}`}>
+                      {item.quantidade_atual}{' '}
+                      <span className="text-sm text-slate-400 font-medium">un</span>
                     </span>
-                  ) : nivelAtencao ? (
-                    <span className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-sm font-bold">
-                      <AlertTriangle size={16} /> Estoque Baixo
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-sm font-bold">
-                      <PackageCheck size={16} /> Adequado
-                    </span>
-                  )}
+                  </div>
                 </div>
+              )
+            })}
 
-                <div className="col-span-3 text-right">
-                  <span className={`text-3xl font-bold ${nivelCritico ? 'text-red-500' : 'text-slate-800'}`}>
-                    {item.quantidade_atual}{' '}
-                    <span className="text-sm text-slate-400 font-medium">{item.unidade_medida || 'un'}</span>
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-
-          {itensEstoque.length === 0 && (
-            <div className="p-12 text-center text-slate-400 text-xl">Nenhum registro de estoque encontrado.</div>
-          )}
+            {produtosProntos.length === 0 && (
+              <div className="p-12 text-center text-slate-400 text-xl">Nenhum produto pronto cadastrado.</div>
+            )}
+          </div>
         </div>
       </div>
     </div>

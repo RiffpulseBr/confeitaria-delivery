@@ -57,6 +57,18 @@ class InsumoCreate(BaseModel):
     ativo: bool = True
 
 
+class EstoqueProdutoCreate(BaseModel):
+    produto_id: str
+    quantidade_inicial: float = Field(default=0, ge=0)
+    alerta_minimo: float = Field(default=0, ge=0)
+
+
+class EstoqueProdutoEntradaCreate(BaseModel):
+    produto_id: str
+    quantidade: float = Field(gt=0)
+    observacao: Optional[str] = None
+
+
 class ReceitaIngredienteCreate(BaseModel):
     insumo_id: str
     quantidade_insumo: float = Field(gt=0)

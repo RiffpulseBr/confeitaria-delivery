@@ -16,6 +16,8 @@ from supabase import Client, create_client
 
 from schemas import (
     EstoqueEntradaCreate,
+    EstoqueProdutoCreate,
+    EstoqueProdutoEntradaCreate,
     InsumoCreate,
     IfoodAckRequest,
     IfoodCloseStoreRequest,
@@ -532,6 +534,30 @@ def _listar_insumos_formatados() -> list[dict[str, Any]]:
     return itens
 
 
+def _listar_estoque_produtos_formatado() -> list[dict[str, Any]]:
+    produtos = _product_lookup()
+    response = _get_supabase_client().table("estoque_produtos").select("*").order("updated_at", desc=True).execute()
+    itens = response.data or []
+
+    for item in itens:
+        produto = produtos.get(item.get("produto_id"), {})
+        item["produto_nome"] = produto.get("nome", "Produto sem nome")
+        item["preco_venda"] = produto.get("preco")
+    itens.sort(key=lambda item: item.get("produto_nome") or "")
+    return itens
+
+
+def _upsert_estoque_produto(payload: dict[str, Any]) -> dict[str, Any]:
+    response = _get_supabase_client().table("estoque_produtos").upsert(payload, on_conflict="produto_id").execute()
+    if response.data:
+        return response.data[0]
+
+    consulta = _get_supabase_client().table("estoque_produtos").select("*").eq("produto_id", payload["produto_id"]).limit(1).execute()
+    if consulta.data:
+        return consulta.data[0]
+    return payload
+
+
 def _listar_receitas_formatadas() -> list[dict[str, Any]]:
     product_map = _product_lookup()
     insumo_map = _insumo_lookup()
@@ -681,6 +707,63 @@ def criar_insumo(payload: InsumoCreate) -> dict[str, Any]:
             "mensagem": "Insumo cadastrado com sucesso.",
             "insumo": insumo,
         }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/estoque/produtos")
+def listar_estoque_produtos() -> list[dict[str, Any]]:
+    try:
+        return _listar_estoque_produtos_formatado()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/estoque/produtos", status_code=status.HTTP_201_CREATED)
+def cadastrar_produto_no_estoque(payload: EstoqueProdutoCreate) -> dict[str, Any]:
+    try:
+        data = {
+            "produto_id": payload.produto_id,
+            "quantidade_atual": payload.quantidade_inicial,
+            "alerta_minimo": payload.alerta_minimo,
+            "updated_at": _utc_now_iso(),
+        }
+        estoque_produto = _upsert_estoque_produto(data)
+        return {
+            "mensagem": "Produto pronto vinculado ao estoque com sucesso.",
+            "estoque_produto": estoque_produto,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/estoque/produtos/entrada")
+def registrar_entrada_produto(payload: EstoqueProdutoEntradaCreate) -> dict[str, Any]:
+    try:
+        consulta = _get_supabase_client().table("estoque_produtos").select("*").eq("produto_id", payload.produto_id).limit(1).execute()
+        item = consulta.data[0] if consulta.data else None
+        if not item:
+            raise HTTPException(status_code=404, detail="Produto nao cadastrado no estoque de prontos.")
+
+        nova_quantidade = float(item.get("quantidade_atual") or 0) + payload.quantidade
+        response = (
+            _get_supabase_client().table("estoque_produtos")
+            .update(
+                {
+                    "quantidade_atual": nova_quantidade,
+                    "updated_at": _utc_now_iso(),
+                    "observacao": payload.observacao,
+                }
+            )
+            .eq("id", item["id"])
+            .execute()
+        )
+        return {
+            "mensagem": "Entrada de produto pronto registrada com sucesso.",
+            "estoque_produto": response.data[0] if response.data else {**item, "quantidade_atual": nova_quantidade},
+        }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
