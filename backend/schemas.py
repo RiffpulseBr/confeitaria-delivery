@@ -24,8 +24,8 @@ class IfoodAckRequest(BaseModel):
 
 
 class EstoqueEntradaCreate(BaseModel):
+    insumo_id: Optional[str] = None
     estoque_id: Optional[str] = None
-    produto_id: Optional[str] = None
     quantidade: float = Field(gt=0)
     custo_unitario: Optional[float] = Field(default=None, ge=0)
     observacao: Optional[str] = None
@@ -54,7 +54,6 @@ class InsumoCreate(BaseModel):
     quantidade_inicial: float = Field(default=0, ge=0)
     alerta_minimo: float = Field(default=0, ge=0)
     custo_medio: Optional[float] = Field(default=None, ge=0)
-    preco_venda: float = Field(default=0, ge=0)
     ativo: bool = True
 
 

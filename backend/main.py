@@ -430,15 +430,15 @@ def _get_pending_ifood_event_ids() -> list[str]:
 
 
 def _fetch_estoque_item(entrada: EstoqueEntradaCreate) -> dict[str, Any]:
-    if entrada.estoque_id:
-        itens = _fetch_table_rows("estoque", {"id": entrada.estoque_id})
-    elif entrada.produto_id:
-        itens = _fetch_table_rows("estoque", {"produto_id": entrada.produto_id})
+    if entrada.insumo_id:
+        itens = _fetch_table_rows("insumos", {"id": entrada.insumo_id})
+    elif entrada.estoque_id:
+        itens = _fetch_table_rows("insumos", {"id": entrada.estoque_id})
     else:
-        raise HTTPException(status_code=400, detail="Informe estoque_id ou produto_id.")
+        raise HTTPException(status_code=400, detail="Informe insumo_id.")
 
     if not itens:
-        raise HTTPException(status_code=404, detail="Item de estoque nao encontrado.")
+        raise HTTPException(status_code=404, detail="Insumo nao encontrado.")
     return itens[0]
 
 
@@ -448,7 +448,7 @@ def _update_estoque_quantity(entrada: EstoqueEntradaCreate) -> dict[str, Any]:
     nova_quantidade = quantidade_atual + entrada.quantidade
 
     response = (
-        _get_supabase_client().table("estoque")
+        _get_supabase_client().table("insumos")
         .update({"quantidade_atual": nova_quantidade, "atualizado_em": _utc_now_iso()})
         .eq("id", item["id"])
         .execute()
@@ -457,8 +457,7 @@ def _update_estoque_quantity(entrada: EstoqueEntradaCreate) -> dict[str, Any]:
     try:
         _get_supabase_client().table("movimentacoes_estoque").insert(
             {
-                "estoque_id": item["id"],
-                "produto_id": item.get("produto_id"),
+                "insumo_id": item["id"],
                 "tipo_movimentacao": "entrada",
                 "quantidade": entrada.quantidade,
                 "custo_unitario": entrada.custo_unitario,
@@ -498,65 +497,83 @@ def _product_lookup() -> dict[str, dict[str, Any]]:
     return {item["id"]: item for item in (response.data or []) if item.get("id")}
 
 
-def _stock_lookup() -> dict[str, dict[str, Any]]:
-    response = (
-        _get_supabase_client().table("estoque")
-        .select("id, produto_id, quantidade_atual, alerta_minimo, unidade_medida")
-        .execute()
-    )
-    return {item["produto_id"]: item for item in (response.data or []) if item.get("produto_id")}
+def _insumo_lookup() -> dict[str, dict[str, Any]]:
+    response = _get_supabase_client().table("insumos").select("*").execute()
+    return {item["id"]: item for item in (response.data or []) if item.get("id")}
 
 
-def _load_receita_detalhes() -> dict[str, dict[str, Any]]:
+def _last_cost_by_insumo() -> dict[str, Any]:
     try:
-        response = _get_supabase_client().table("receitas_detalhes").select("*").execute()
-        return {item["produto_id"]: item for item in (response.data or []) if item.get("produto_id")}
+        response = (
+            _get_supabase_client().table("movimentacoes_estoque")
+            .select("insumo_id, custo_unitario, created_at")
+            .not_.is_("custo_unitario", "null")
+            .order("created_at", desc=True)
+            .execute()
+        )
     except Exception:
         return {}
+
+    custo_por_insumo: dict[str, Any] = {}
+    for movimento in response.data or []:
+        insumo_id = movimento.get("insumo_id")
+        if insumo_id and insumo_id not in custo_por_insumo:
+            custo_por_insumo[insumo_id] = movimento.get("custo_unitario")
+    return custo_por_insumo
+
+
+def _listar_insumos_formatados() -> list[dict[str, Any]]:
+    custo_por_insumo = _last_cost_by_insumo()
+    response = _get_supabase_client().table("insumos").select("*").order("nome").execute()
+    itens = response.data or []
+
+    for item in itens:
+        item["custo_medio"] = custo_por_insumo.get(item.get("id"))
+    return itens
 
 
 def _listar_receitas_formatadas() -> list[dict[str, Any]]:
     product_map = _product_lookup()
-    stock_map = _stock_lookup()
-    details_map = _load_receita_detalhes()
-    receitas_response = _get_supabase_client().table("receitas").select("*").execute()
+    insumo_map = _insumo_lookup()
+    receitas_response = _get_supabase_client().table("receitas").select("*").order("updated_at", desc=True).execute()
+    receita_itens_response = _get_supabase_client().table("receita_itens").select("*").execute()
 
-    receitas_by_produto: dict[str, list[dict[str, Any]]] = {}
-    for item in receitas_response.data or []:
-        produto_id = item.get("produto_id")
+    itens_by_receita: dict[str, list[dict[str, Any]]] = {}
+    for item in receita_itens_response.data or []:
+        receita_id = item.get("receita_id")
         insumo_id = item.get("insumo_id")
-        if not produto_id or not insumo_id:
+        if not receita_id or not insumo_id:
             continue
 
-        insumo = product_map.get(insumo_id, {})
-        estoque = stock_map.get(insumo_id, {})
-        receitas_by_produto.setdefault(produto_id, []).append(
+        insumo = insumo_map.get(insumo_id, {})
+        itens_by_receita.setdefault(receita_id, []).append(
             {
                 "id": item.get("id"),
                 "insumo_id": insumo_id,
                 "insumo_nome": insumo.get("nome", "Insumo sem nome"),
                 "quantidade_insumo": item.get("quantidade_insumo"),
-                "unidade_medida": item.get("unidade_medida") or estoque.get("unidade_medida") or "un",
-                "estoque_atual": estoque.get("quantidade_atual"),
-                "alerta_minimo": estoque.get("alerta_minimo"),
+                "unidade_medida": item.get("unidade_medida") or insumo.get("unidade_medida") or "un",
+                "estoque_atual": insumo.get("quantidade_atual"),
+                "alerta_minimo": insumo.get("alerta_minimo"),
             }
         )
 
     receitas_formatadas: list[dict[str, Any]] = []
-    for produto_id, ingredientes in receitas_by_produto.items():
+    for receita in receitas_response.data or []:
+        produto_id = receita.get("produto_id")
         produto = product_map.get(produto_id, {})
-        detalhes = details_map.get(produto_id, {})
         receitas_formatadas.append(
             {
+                "receita_id": receita.get("id"),
                 "produto_id": produto_id,
                 "produto_nome": produto.get("nome", "Produto sem nome"),
-                "nome_receita": detalhes.get("nome_receita") or produto.get("nome"),
-                "rendimento": detalhes.get("rendimento"),
-                "unidade_rendimento": detalhes.get("unidade_rendimento"),
-                "modo_preparo": detalhes.get("modo_preparo"),
-                "observacoes": detalhes.get("observacoes"),
-                "updated_at": detalhes.get("updated_at"),
-                "ingredientes": sorted(ingredientes, key=lambda ingredient: ingredient["insumo_nome"]),
+                "nome_receita": receita.get("nome_receita") or produto.get("nome"),
+                "rendimento": receita.get("rendimento"),
+                "unidade_rendimento": receita.get("unidade_rendimento"),
+                "modo_preparo": receita.get("modo_preparo"),
+                "observacoes": receita.get("observacoes"),
+                "updated_at": receita.get("updated_at"),
+                "ingredientes": sorted(itens_by_receita.get(receita.get("id"), []), key=lambda ingredient: ingredient["insumo_nome"]),
             }
         )
 
@@ -633,29 +650,22 @@ def listar_produtos() -> list[dict[str, Any]]:
 @app.post("/api/insumos", status_code=status.HTTP_201_CREATED)
 def criar_insumo(payload: InsumoCreate) -> dict[str, Any]:
     try:
-        produto_payload = {
+        insumo_payload = {
             "nome": payload.nome.strip(),
-            "preco": payload.preco_venda,
             "ativo": payload.ativo,
-        }
-        produto_response = _get_supabase_client().table("produtos").insert(produto_payload).execute()
-        produto = produto_response.data[0]
-
-        estoque_payload = {
-            "produto_id": produto["id"],
             "quantidade_atual": payload.quantidade_inicial,
             "alerta_minimo": payload.alerta_minimo,
             "unidade_medida": payload.unidade_medida.strip(),
             "atualizado_em": _utc_now_iso(),
         }
-        estoque_response = _get_supabase_client().table("estoque").insert(estoque_payload).execute()
+        insumo_response = _get_supabase_client().table("insumos").insert(insumo_payload).execute()
+        insumo = insumo_response.data[0]
 
         if payload.quantidade_inicial > 0:
             try:
                 _get_supabase_client().table("movimentacoes_estoque").insert(
                     {
-                        "estoque_id": estoque_response.data[0]["id"],
-                        "produto_id": produto["id"],
+                        "insumo_id": insumo["id"],
                         "tipo_movimentacao": "entrada_inicial",
                         "quantidade": payload.quantidade_inicial,
                         "custo_unitario": payload.custo_medio,
@@ -669,8 +679,7 @@ def criar_insumo(payload: InsumoCreate) -> dict[str, Any]:
 
         return {
             "mensagem": "Insumo cadastrado com sucesso.",
-            "produto": produto,
-            "estoque": estoque_response.data[0] if estoque_response.data else estoque_payload,
+            "insumo": insumo,
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -694,7 +703,7 @@ def salvar_receita(payload: ReceitaCreate) -> dict[str, Any]:
 
         _garantir_lista_unica_ingredientes(payload.ingredientes)
 
-        detalhe_payload = {
+        receita_payload = {
             "produto_id": produto_id,
             "nome_receita": payload.nome_receita or None,
             "rendimento": payload.rendimento,
@@ -703,20 +712,25 @@ def salvar_receita(payload: ReceitaCreate) -> dict[str, Any]:
             "observacoes": payload.observacoes,
             "updated_at": _utc_now_iso(),
         }
-        _get_supabase_client().table("receitas_detalhes").upsert(detalhe_payload, on_conflict="produto_id").execute()
+        receita_response = _get_supabase_client().table("receitas").upsert(receita_payload, on_conflict="produto_id").execute()
+        receita = receita_response.data[0] if receita_response.data else None
+        if not receita or not receita.get("id"):
+            consulta = _get_supabase_client().table("receitas").select("id").eq("produto_id", produto_id).limit(1).execute()
+            receita = consulta.data[0] if consulta.data else None
+        if not receita or not receita.get("id"):
+            raise HTTPException(status_code=500, detail="Nao foi possivel localizar a receita apos salvar o cabecalho.")
 
-        _get_supabase_client().table("receitas").delete().eq("produto_id", produto_id).execute()
+        _get_supabase_client().table("receita_itens").delete().eq("receita_id", receita["id"]).execute()
         linhas_receita = [
             {
-                "produto_id": produto_id,
+                "receita_id": receita["id"],
                 "insumo_id": ingrediente.insumo_id,
                 "quantidade_insumo": ingrediente.quantidade_insumo,
                 "unidade_medida": ingrediente.unidade_medida,
-                "updated_at": _utc_now_iso(),
             }
             for ingrediente in payload.ingredientes
         ]
-        _get_supabase_client().table("receitas").insert(linhas_receita).execute()
+        _get_supabase_client().table("receita_itens").insert(linhas_receita).execute()
 
         receita_salva = next(
             (item for item in _listar_receitas_formatadas() if item["produto_id"] == produto_id),
@@ -731,7 +745,7 @@ def salvar_receita(payload: ReceitaCreate) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Falha ao salvar receita. Confira se a migracao receitas_detalhes foi aplicada. Detalhe: {exc}",
+            detail=f"Falha ao salvar receita. Confira se a reestruturacao do banco foi aplicada. Detalhe: {exc}",
         ) from exc
 
 
@@ -765,34 +779,7 @@ def criar_pedido(pedido: PedidoCreate) -> dict[str, Any]:
 @app.get("/api/estoque/insumos")
 def listar_insumos_estoque() -> list[dict[str, Any]]:
     try:
-        response = (
-            _get_supabase_client().table("estoque")
-            .select("id, quantidade_atual, alerta_minimo, unidade_medida, produto_id, produtos(nome)")
-            .order("quantidade_atual", desc=False)
-            .execute()
-        )
-        itens = response.data or []
-
-        try:
-            movimentacoes = (
-                _get_supabase_client().table("movimentacoes_estoque")
-                .select("produto_id, custo_unitario, created_at")
-                .not_.is_("custo_unitario", "null")
-                .order("created_at", desc=True)
-                .execute()
-            )
-            custo_por_produto: dict[str, Any] = {}
-            for movimento in movimentacoes.data or []:
-                produto_id = movimento.get("produto_id")
-                if produto_id and produto_id not in custo_por_produto:
-                    custo_por_produto[produto_id] = movimento.get("custo_unitario")
-        except Exception:
-            custo_por_produto = {}
-
-        for item in itens:
-            item["custo_medio"] = custo_por_produto.get(item.get("produto_id"))
-
-        return itens
+        return _listar_insumos_formatados()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

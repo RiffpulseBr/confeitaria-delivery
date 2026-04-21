@@ -59,7 +59,7 @@ function Administracao() {
   const [submittingReceita, setSubmittingReceita] = useState(false)
   const [updatingMerchantId, setUpdatingMerchantId] = useState('')
   const [form, setForm] = useState({
-    estoque_id: '',
+    insumo_id: '',
     quantidade: '',
     custo_unitario: '',
     documento: '',
@@ -195,7 +195,7 @@ function Administracao() {
       const proximo = { ...ingredientes[index], [field]: value }
 
       if (field === 'insumo_id') {
-        const insumoSelecionado = insumos.find((item) => item.produto_id === value)
+        const insumoSelecionado = insumos.find((item) => item.id === value)
         if (insumoSelecionado?.unidade_medida) {
           proximo.unidade_medida = insumoSelecionado.unidade_medida
         }
@@ -233,7 +233,7 @@ function Administracao() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          estoque_id: form.estoque_id,
+          insumo_id: form.insumo_id,
           quantidade: Number(form.quantidade),
           custo_unitario: form.custo_unitario ? Number(form.custo_unitario) : null,
           documento: form.documento || null,
@@ -248,7 +248,7 @@ function Administracao() {
 
       setMensagem('Entrada de mercadoria registrada com sucesso.')
       setForm({
-        estoque_id: '',
+        insumo_id: '',
         quantidade: '',
         custo_unitario: '',
         documento: '',
@@ -484,14 +484,14 @@ function Administracao() {
               <span className="mb-2 block text-sm font-bold text-slate-700">Insumo</span>
               <select
                 required
-                value={form.estoque_id}
-                onChange={(event) => onChangeForm('estoque_id', event.target.value)}
+                value={form.insumo_id}
+                onChange={(event) => onChangeForm('insumo_id', event.target.value)}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-800 outline-none transition focus:border-emerald-400"
               >
                 <option value="">Selecione um item do estoque</option>
                 {insumos.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {(item.produtos?.nome || 'Insumo sem nome') + ` | Atual: ${item.quantidade_atual} ${item.unidade_medida || 'un'}`}
+                    {(item.nome || 'Insumo sem nome') + ` | Atual: ${item.quantidade_atual} ${item.unidade_medida || 'un'}`}
                   </option>
                 ))}
               </select>
@@ -800,8 +800,8 @@ function Administracao() {
                   >
                     <option value="">Selecione um insumo</option>
                     {insumos.map((item) => (
-                      <option key={item.produto_id} value={item.produto_id}>
-                        {item.produtos?.nome || 'Insumo sem nome'}
+                      <option key={item.id} value={item.id}>
+                        {item.nome || 'Insumo sem nome'}
                       </option>
                     ))}
                   </select>
@@ -1118,7 +1118,7 @@ function Administracao() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {insumos.map((item) => (
             <div key={item.id} className="rounded-3xl border border-slate-100 bg-slate-50 p-5">
-              <p className="text-lg font-bold text-slate-900">{item.produtos?.nome || 'Insumo sem nome'}</p>
+              <p className="text-lg font-bold text-slate-900">{item.nome || 'Insumo sem nome'}</p>
               <p className="mt-1 text-sm text-slate-500">Alerta minimo: {item.alerta_minimo || 0} {item.unidade_medida || 'un'}</p>
               <p className="mt-4 text-3xl font-bold text-emerald-600">
                 {Number(item.quantidade_atual || 0).toLocaleString('pt-BR')}

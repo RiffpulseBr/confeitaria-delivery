@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Loader2, PackageCheck, PackageSearch } from 'lucide-react'
 
-import { getSupabaseClient } from '../supabaseClient'
+import { getApiBaseUrl } from '../config'
 
 function Estoque() {
   const [itensEstoque, setItensEstoque] = useState([])
@@ -13,21 +13,10 @@ function Estoque() {
 
   const buscarEstoque = async () => {
     try {
-      const supabase = getSupabaseClient()
-      const { data, error } = await supabase
-        .from('estoque')
-        .select(`
-          id,
-          quantidade_atual,
-          alerta_minimo,
-          unidade_medida,
-          produto_id,
-          produtos (nome)
-        `)
-        .order('quantidade_atual', { ascending: true })
-
-      if (error) throw error
-      setItensEstoque(data || [])
+      const response = await fetch(`${getApiBaseUrl()}/api/estoque/insumos`)
+      const data = await response.json()
+      if (!response.ok) throw new Error(data?.detail || 'Falha ao carregar estoque.')
+      setItensEstoque(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Erro ao buscar estoque:', error)
     } finally {
@@ -71,7 +60,7 @@ function Estoque() {
                 className="grid grid-cols-12 gap-4 p-4 items-center border-b border-slate-100 hover:bg-slate-50 transition-colors"
               >
                 <div className="col-span-6 font-bold text-xl text-slate-700">
-                  {item.produtos?.nome || 'Produto Desconhecido'}
+                  {item.nome || 'Insumo Desconhecido'}
                 </div>
 
                 <div className="col-span-3 flex justify-center">
