@@ -1,3 +1,58 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply min-h-screen bg-orange-50 text-stone-800;
+    font-family: "ui-sans-serif", "Segoe UI", sans-serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: Georgia, "Times New Roman", serif;
+    letter-spacing: -0.02em;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    @apply outline-none;
+  }
+
+  ::selection {
+    @apply bg-rose-200 text-stone-900;
+  }
+}
+
+@layer utilities {
+  .pretty-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(190, 24, 93, 0.28) transparent;
+  }
+
+  .pretty-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .pretty-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(190, 24, 93, 0.28);
+    border-radius: 999px;
+  }
+
+  .pretty-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

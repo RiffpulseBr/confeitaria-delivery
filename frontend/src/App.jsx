@@ -1,53 +1,137 @@
 import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom'
-import { ChefHat, PackageSearch, Settings2, Store } from 'lucide-react'
+import { ChefHat, PackageSearch, Settings2, Sparkles, Store } from 'lucide-react'
 
 import Balcao from './Pages/Balcao'
 import Estoque from './Pages/Estoque'
 import FilaPedidos from './Pages/FilaPedidos'
 import Administracao from './Pages/Administracao'
 
+const menuItems = [
+  { path: '/', icon: Store, label: 'Balcao', hint: 'Pedidos e caixa' },
+  { path: '/fila', icon: ChefHat, label: 'Producao', hint: 'Comandas da cozinha' },
+  { path: '/estoque', icon: PackageSearch, label: 'Estoque', hint: 'Insumos e prontos' },
+  { path: '/admin', icon: Settings2, label: 'Admin', hint: 'Receitas e iFood' },
+]
+
 function Sidebar() {
   const location = useLocation()
 
-  const menuItems = [
-    { path: '/', icon: <Store size={32} />, label: 'Balcao' },
-    { path: '/fila', icon: <ChefHat size={32} />, label: 'Producao' },
-    { path: '/estoque', icon: <PackageSearch size={32} />, label: 'Estoque' },
-    { path: '/admin', icon: <Settings2 size={32} />, label: 'Admin' },
-  ]
-
   return (
-    <nav className="w-28 bg-slate-900 text-white flex flex-col items-center py-8 gap-8 shadow-2xl z-50">
-      <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center font-bold text-2xl shadow-lg shadow-emerald-500/50 mb-4">
-        SC
+    <aside className="hidden w-[290px] shrink-0 flex-col border-r border-white/60 bg-[linear-gradient(180deg,_rgba(68,24,34,0.96),_rgba(88,28,44,0.95)_42%,_rgba(120,53,15,0.92))] px-6 py-8 text-white shadow-[0_24px_80px_rgba(68,24,34,0.35)] lg:flex">
+      <div className="rounded-[2rem] border border-white/15 bg-white/10 p-6 backdrop-blur">
+        <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-3xl bg-gradient-to-br from-rose-300 to-amber-200 text-2xl font-bold text-rose-950 shadow-lg">
+          SC
+        </div>
+        <p className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.28em] text-rose-100">
+          <Sparkles size={12} />
+          Atelier doce
+        </p>
+        <h1 className="font-serif text-3xl leading-tight">Studio Confeitaria</h1>
+        <p className="mt-3 text-sm leading-6 text-rose-100/80">
+          Operacao de vendas, producao e estoque com um visual mais acolhedor para o dia a dia da confeitaria.
+        </p>
       </div>
 
-      {menuItems.map((item) => {
-        const ativo = location.pathname === item.path
-        return (
-          <Link
-            key={item.path}
-            to={item.path}
-            className={`flex flex-col items-center gap-2 p-4 rounded-2xl transition-all ${
-              ativo ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            {item.icon}
-            <span className="text-xs font-bold uppercase tracking-wider">{item.label}</span>
-          </Link>
-        )
-      })}
+      <nav className="mt-8 space-y-3">
+        {menuItems.map((item) => {
+          const Icon = item.icon
+          const ativo = location.pathname === item.path
+
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`group flex items-center gap-4 rounded-[1.75rem] px-4 py-4 transition ${
+                ativo
+                  ? 'bg-white text-rose-950 shadow-[0_14px_40px_rgba(255,255,255,0.18)]'
+                  : 'text-rose-100/85 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <span
+                className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                  ativo ? 'bg-rose-100 text-rose-700' : 'bg-white/10 text-rose-100'
+                }`}
+              >
+                <Icon size={22} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-base font-bold">{item.label}</span>
+                <span className={`block text-sm ${ativo ? 'text-stone-500' : 'text-rose-100/70'}`}>{item.hint}</span>
+              </span>
+            </Link>
+          )
+        })}
+      </nav>
+
+      <div className="mt-auto rounded-[1.75rem] border border-white/15 bg-white/10 p-5 text-sm leading-6 text-rose-100/80">
+        <p className="font-bold text-white">Resumo do ambiente</p>
+        <p className="mt-2">Menu simplificado, layout mais leve e foco operacional para balcao, cozinha e estoque.</p>
+      </div>
+    </aside>
+  )
+}
+
+function MobileHeader() {
+  const location = useLocation()
+  const current = menuItems.find((item) => item.path === location.pathname) || menuItems[0]
+  const Icon = current.icon
+
+  return (
+    <header className="border-b border-white/60 bg-white/85 px-5 py-4 shadow-sm backdrop-blur lg:hidden">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-200 to-amber-100 text-rose-900 shadow-sm">
+            <Sparkles size={20} />
+          </div>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.3em] text-rose-500">Studio Confeitaria</p>
+            <p className="font-serif text-2xl text-stone-900">{current.label}</p>
+          </div>
+        </div>
+        <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-stone-900 text-white">
+          <Icon size={20} />
+        </span>
+      </div>
+    </header>
+  )
+}
+
+function MobileNav() {
+  const location = useLocation()
+
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/80 bg-white/90 px-3 py-3 shadow-[0_-12px_40px_rgba(120,53,15,0.16)] backdrop-blur lg:hidden">
+      <div className="grid grid-cols-4 gap-2">
+        {menuItems.map((item) => {
+          const Icon = item.icon
+          const ativo = location.pathname === item.path
+
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`flex flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-bold uppercase tracking-[0.2em] transition ${
+                ativo ? 'bg-rose-100 text-rose-700' : 'text-stone-500'
+              }`}
+            >
+              <Icon size={20} />
+              {item.label}
+            </Link>
+          )
+        })}
+      </div>
     </nav>
   )
 }
 
-function App() {
+function AppShell() {
   return (
-    <BrowserRouter>
-      <div className="flex h-screen w-screen overflow-hidden bg-slate-50">
-        <Sidebar />
+    <div className="flex min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,207,232,0.38),_transparent_32%),linear-gradient(135deg,_#fff7ed,_#fff1f2_46%,_#fffbeb)] text-stone-800">
+      <Sidebar />
 
-        <main className="flex-1 h-full overflow-hidden">
+      <div className="flex min-h-screen flex-1 flex-col">
+        <MobileHeader />
+        <main className="flex-1 overflow-hidden pb-24 lg:pb-0">
           <Routes>
             <Route path="/" element={<Balcao />} />
             <Route path="/fila" element={<FilaPedidos />} />
@@ -55,7 +139,16 @@ function App() {
             <Route path="/admin" element={<Administracao />} />
           </Routes>
         </main>
+        <MobileNav />
       </div>
+    </div>
+  )
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <AppShell />
     </BrowserRouter>
   )
 }

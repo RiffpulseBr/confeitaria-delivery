@@ -69,6 +69,13 @@ class EstoqueProdutoEntradaCreate(BaseModel):
     observacao: Optional[str] = None
 
 
+class EstoqueProdutoMovimentoCreate(BaseModel):
+    produto_id: str
+    quantidade: float = Field(gt=0)
+    alerta_minimo: Optional[float] = Field(default=None, ge=0)
+    observacao: Optional[str] = None
+
+
 class ReceitaIngredienteCreate(BaseModel):
     insumo_id: str
     quantidade_insumo: float = Field(gt=0)

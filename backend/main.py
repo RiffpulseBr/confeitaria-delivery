@@ -8,7 +8,7 @@ from typing import Any, Iterable, Optional
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +18,7 @@ from schemas import (
     EstoqueEntradaCreate,
     EstoqueProdutoCreate,
     EstoqueProdutoEntradaCreate,
+    EstoqueProdutoMovimentoCreate,
     InsumoCreate,
     IfoodAckRequest,
     IfoodCloseStoreRequest,
@@ -558,6 +559,66 @@ def _upsert_estoque_produto(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _movimentar_estoque_produto(
+    produto_id: str,
+    quantidade: float,
+    alerta_minimo: Optional[float] = None,
+    observacao: Optional[str] = None,
+) -> dict[str, Any]:
+    consulta = _get_supabase_client().table("estoque_produtos").select("*").eq("produto_id", produto_id).limit(1).execute()
+    item = consulta.data[0] if consulta.data else None
+
+    if item:
+        payload = {
+            "quantidade_atual": float(item.get("quantidade_atual") or 0) + quantidade,
+            "updated_at": _utc_now_iso(),
+        }
+        if alerta_minimo is not None:
+            payload["alerta_minimo"] = alerta_minimo
+        if observacao:
+            payload["observacao"] = observacao
+
+        response = _get_supabase_client().table("estoque_produtos").update(payload).eq("id", item["id"]).execute()
+        return response.data[0] if response.data else {**item, **payload}
+
+    data = {
+        "produto_id": produto_id,
+        "quantidade_atual": quantidade,
+        "alerta_minimo": alerta_minimo or 0,
+        "observacao": observacao,
+        "updated_at": _utc_now_iso(),
+    }
+    return _upsert_estoque_produto(data)
+
+
+def _listar_pedidos(status_filter: Optional[str] = None) -> list[dict[str, Any]]:
+    query = (
+        _get_supabase_client().table("pedidos")
+        .select(
+            """
+            id,
+            origem,
+            status,
+            valor_total,
+            criado_em,
+            referencia_externa,
+            itens_pedido (
+              quantidade,
+              preco_unitario,
+              produtos (nome)
+            )
+            """
+        )
+        .order("criado_em", desc=False)
+    )
+
+    if status_filter:
+        query = query.eq("status", status_filter)
+
+    response = query.execute()
+    return response.data or []
+
+
 def _listar_receitas_formatadas() -> list[dict[str, Any]]:
     product_map = _product_lookup()
     insumo_map = _insumo_lookup()
@@ -737,30 +798,34 @@ def cadastrar_produto_no_estoque(payload: EstoqueProdutoCreate) -> dict[str, Any
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/estoque/produtos/movimentar")
+def movimentar_estoque_produtos(payload: EstoqueProdutoMovimentoCreate) -> dict[str, Any]:
+    try:
+        estoque_produto = _movimentar_estoque_produto(
+            produto_id=payload.produto_id,
+            quantidade=payload.quantidade,
+            alerta_minimo=payload.alerta_minimo,
+            observacao=payload.observacao,
+        )
+        return {
+            "mensagem": "Movimentacao de produto pronto registrada com sucesso.",
+            "estoque_produto": estoque_produto,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/estoque/produtos/entrada")
 def registrar_entrada_produto(payload: EstoqueProdutoEntradaCreate) -> dict[str, Any]:
     try:
-        consulta = _get_supabase_client().table("estoque_produtos").select("*").eq("produto_id", payload.produto_id).limit(1).execute()
-        item = consulta.data[0] if consulta.data else None
-        if not item:
-            raise HTTPException(status_code=404, detail="Produto nao cadastrado no estoque de prontos.")
-
-        nova_quantidade = float(item.get("quantidade_atual") or 0) + payload.quantidade
-        response = (
-            _get_supabase_client().table("estoque_produtos")
-            .update(
-                {
-                    "quantidade_atual": nova_quantidade,
-                    "updated_at": _utc_now_iso(),
-                    "observacao": payload.observacao,
-                }
-            )
-            .eq("id", item["id"])
-            .execute()
+        estoque_produto = _movimentar_estoque_produto(
+            produto_id=payload.produto_id,
+            quantidade=payload.quantidade,
+            observacao=payload.observacao,
         )
         return {
             "mensagem": "Entrada de produto pronto registrada com sucesso.",
-            "estoque_produto": response.data[0] if response.data else {**item, "quantidade_atual": nova_quantidade},
+            "estoque_produto": estoque_produto,
         }
     except HTTPException:
         raise
@@ -857,6 +922,39 @@ def criar_pedido(pedido: PedidoCreate) -> dict[str, Any]:
         return {"mensagem": "Pedido criado com sucesso!", "pedido_id": pedido_id}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/pedidos")
+def listar_pedidos(status: Optional[str] = Query(default=None)) -> list[dict[str, Any]]:
+    try:
+        return _listar_pedidos(status_filter=status)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/pedidos/{pedido_id}/concluir")
+def concluir_pedido(pedido_id: str) -> dict[str, Any]:
+    try:
+        consulta = _get_supabase_client().table("pedidos").select("id, status").eq("id", pedido_id).limit(1).execute()
+        pedido = consulta.data[0] if consulta.data else None
+        if not pedido:
+            raise HTTPException(status_code=404, detail="Pedido nao encontrado.")
+
+        if pedido.get("status") == "concluido":
+            return {
+                "mensagem": "Pedido ja estava concluido.",
+                "pedido_id": pedido_id,
+            }
+
+        response = _get_supabase_client().table("pedidos").update({"status": "concluido"}).eq("id", pedido_id).execute()
+        return {
+            "mensagem": "Pedido concluido com sucesso.",
+            "pedido": response.data[0] if response.data else {"id": pedido_id, "status": "concluido"},
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Falha ao concluir pedido: {exc}") from exc
 
 
 @app.get("/api/estoque/insumos")
