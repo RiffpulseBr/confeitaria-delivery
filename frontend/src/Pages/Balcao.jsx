@@ -17,7 +17,7 @@ function Balcao() {
   const [enviando, setEnviando] = useState(false)
 
   useEffect(() => {
-    fetch(`${getApiBaseUrl()}/api/produtos`)
+    fetch(`${getApiBaseUrl()}/api/produtos?ativos_apenas=true`)
       .then((res) => res.json())
       .then((data) => {
         setProdutos(Array.isArray(data) ? data : [])
@@ -169,6 +169,12 @@ function Balcao() {
                 </div>
               </button>
             ))}
+
+            {produtos.length === 0 && (
+              <div className="col-span-full rounded-[2rem] border border-dashed border-rose-200 bg-white/75 px-6 py-12 text-center text-stone-500 shadow-sm">
+                Nenhum produto ativo no balcao. Cadastre ou ative itens na aba `Produtos`.
+              </div>
+            )}
           </section>
         </div>
 

@@ -1,16 +1,22 @@
 import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom'
-import { ChefHat, PackageSearch, Settings2, Sparkles, Store } from 'lucide-react'
+import { BookHeart, ChefHat, FlaskConical, PackageSearch, Sparkles, Store, Tag, Truck } from 'lucide-react'
 
 import Balcao from './Pages/Balcao'
 import Estoque from './Pages/Estoque'
 import FilaPedidos from './Pages/FilaPedidos'
-import Administracao from './Pages/Administracao'
+import Ifood from './Pages/Ifood'
+import Insumos from './Pages/Insumos'
+import Produtos from './Pages/Produtos'
+import Receitas from './Pages/Receitas'
 
 const menuItems = [
   { path: '/', icon: Store, label: 'Balcao', hint: 'Pedidos e caixa' },
   { path: '/fila', icon: ChefHat, label: 'Producao', hint: 'Comandas da cozinha' },
-  { path: '/estoque', icon: PackageSearch, label: 'Estoque', hint: 'Insumos e prontos' },
-  { path: '/admin', icon: Settings2, label: 'Admin', hint: 'Receitas e iFood' },
+  { path: '/produtos', icon: Tag, label: 'Produtos', hint: 'Cardapio e preco' },
+  { path: '/receitas', icon: BookHeart, label: 'Receitas', hint: 'Fichas tecnicas' },
+  { path: '/insumos', icon: FlaskConical, label: 'Insumos', hint: 'Base da producao' },
+  { path: '/estoque', icon: PackageSearch, label: 'Estoque', hint: 'Entrada e prontos' },
+  { path: '/ifood', icon: Truck, label: 'iFood', hint: 'Mapeamento e loja' },
 ]
 
 function Sidebar() {
@@ -101,7 +107,7 @@ function MobileNav() {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/80 bg-white/90 px-3 py-3 shadow-[0_-12px_40px_rgba(120,53,15,0.16)] backdrop-blur lg:hidden">
-      <div className="grid grid-cols-4 gap-2">
+      <div className="pretty-scrollbar flex gap-2 overflow-x-auto pb-1">
         {menuItems.map((item) => {
           const Icon = item.icon
           const ativo = location.pathname === item.path
@@ -110,7 +116,7 @@ function MobileNav() {
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-bold uppercase tracking-[0.2em] transition ${
+              className={`flex min-w-[108px] shrink-0 flex-col items-center gap-2 rounded-2xl px-2 py-3 text-xs font-bold uppercase tracking-[0.2em] transition ${
                 ativo ? 'bg-rose-100 text-rose-700' : 'text-stone-500'
               }`}
             >
@@ -135,8 +141,11 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<Balcao />} />
             <Route path="/fila" element={<FilaPedidos />} />
+            <Route path="/produtos" element={<Produtos />} />
+            <Route path="/receitas" element={<Receitas />} />
+            <Route path="/insumos" element={<Insumos />} />
             <Route path="/estoque" element={<Estoque />} />
-            <Route path="/admin" element={<Administracao />} />
+            <Route path="/ifood" element={<Ifood />} />
           </Routes>
         </main>
         <MobileNav />

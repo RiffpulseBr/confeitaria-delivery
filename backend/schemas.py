@@ -3,6 +3,18 @@ from typing import Any, List, Optional
 from pydantic import BaseModel, Field
 
 
+class ProdutoCreate(BaseModel):
+    nome: str = Field(min_length=2)
+    preco: float = Field(default=0, ge=0)
+    ativo: bool = True
+
+
+class ProdutoUpdate(BaseModel):
+    nome: Optional[str] = Field(default=None, min_length=2)
+    preco: Optional[float] = Field(default=None, ge=0)
+    ativo: Optional[bool] = None
+
+
 class ItemPedidoCreate(BaseModel):
     produto_id: str
     quantidade: int
@@ -71,7 +83,8 @@ class EstoqueProdutoEntradaCreate(BaseModel):
 
 class EstoqueProdutoMovimentoCreate(BaseModel):
     produto_id: str
-    quantidade: float = Field(gt=0)
+    quantidade: float
+    tipo_movimentacao: str = Field(default="entrada")
     alerta_minimo: Optional[float] = Field(default=None, ge=0)
     observacao: Optional[str] = None
 

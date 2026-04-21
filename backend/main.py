@@ -27,6 +27,8 @@ from schemas import (
     IfoodOpenStoreRequest,
     IfoodWebhookEvent,
     PedidoCreate,
+    ProdutoCreate,
+    ProdutoUpdate,
     ReceitaCreate,
 )
 
@@ -500,6 +502,14 @@ def _product_lookup() -> dict[str, dict[str, Any]]:
     return {item["id"]: item for item in (response.data or []) if item.get("id")}
 
 
+def _listar_produtos(ativos_apenas: bool = False) -> list[dict[str, Any]]:
+    query = _get_supabase_client().table("produtos").select("*").order("nome")
+    if ativos_apenas:
+        query = query.eq("ativo", True)
+    response = query.execute()
+    return response.data or []
+
+
 def _insumo_lookup() -> dict[str, dict[str, Any]]:
     response = _get_supabase_client().table("insumos").select("*").execute()
     return {item["id"]: item for item in (response.data or []) if item.get("id")}
@@ -565,12 +575,19 @@ def _movimentar_estoque_produto(
     alerta_minimo: Optional[float] = None,
     observacao: Optional[str] = None,
 ) -> dict[str, Any]:
+    if quantidade == 0:
+        raise HTTPException(status_code=400, detail="Informe uma quantidade diferente de zero para movimentar o estoque.")
+
     consulta = _get_supabase_client().table("estoque_produtos").select("*").eq("produto_id", produto_id).limit(1).execute()
     item = consulta.data[0] if consulta.data else None
 
     if item:
+        quantidade_resultante = float(item.get("quantidade_atual") or 0) + quantidade
+        if quantidade_resultante < 0:
+            raise HTTPException(status_code=400, detail="A movimentacao deixaria o estoque de produtos prontos negativo.")
+
         payload = {
-            "quantidade_atual": float(item.get("quantidade_atual") or 0) + quantidade,
+            "quantidade_atual": quantidade_resultante,
             "updated_at": _utc_now_iso(),
         }
         if alerta_minimo is not None:
@@ -588,6 +605,8 @@ def _movimentar_estoque_produto(
         "observacao": observacao,
         "updated_at": _utc_now_iso(),
     }
+    if quantidade < 0:
+        raise HTTPException(status_code=400, detail="Nao e possivel iniciar o estoque de produtos prontos com saldo negativo.")
     return _upsert_estoque_produto(data)
 
 
@@ -726,10 +745,59 @@ def runtime_config() -> dict[str, str]:
 
 
 @app.get("/api/produtos")
-def listar_produtos() -> list[dict[str, Any]]:
+def listar_produtos(ativos_apenas: bool = Query(default=False)) -> list[dict[str, Any]]:
     try:
-        response = _get_supabase_client().table("produtos").select("*").eq("ativo", True).execute()
-        return response.data
+        return _listar_produtos(ativos_apenas=ativos_apenas)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/produtos", status_code=status.HTTP_201_CREATED)
+def criar_produto(payload: ProdutoCreate) -> dict[str, Any]:
+    try:
+        produto_payload = {
+            "nome": payload.nome.strip(),
+            "preco": payload.preco,
+            "ativo": payload.ativo,
+        }
+        response = _get_supabase_client().table("produtos").insert(produto_payload).execute()
+        produto = response.data[0] if response.data else produto_payload
+        return {
+            "mensagem": "Produto cadastrado com sucesso.",
+            "produto": produto,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.patch("/api/produtos/{produto_id}")
+def atualizar_produto(produto_id: str, payload: ProdutoUpdate) -> dict[str, Any]:
+    try:
+        update_payload: dict[str, Any] = {}
+        if payload.nome is not None:
+            update_payload["nome"] = payload.nome.strip()
+        if payload.preco is not None:
+            update_payload["preco"] = payload.preco
+        if payload.ativo is not None:
+            update_payload["ativo"] = payload.ativo
+
+        if not update_payload:
+            raise HTTPException(status_code=400, detail="Informe pelo menos um campo para atualizar o produto.")
+
+        response = _get_supabase_client().table("produtos").update(update_payload).eq("id", produto_id).execute()
+        produto = response.data[0] if response.data else None
+        if not produto:
+            consulta = _get_supabase_client().table("produtos").select("*").eq("id", produto_id).limit(1).execute()
+            produto = consulta.data[0] if consulta.data else None
+        if not produto:
+            raise HTTPException(status_code=404, detail="Produto nao encontrado.")
+
+        return {
+            "mensagem": "Produto atualizado com sucesso.",
+            "produto": produto,
+        }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -801,9 +869,17 @@ def cadastrar_produto_no_estoque(payload: EstoqueProdutoCreate) -> dict[str, Any
 @app.post("/api/estoque/produtos/movimentar")
 def movimentar_estoque_produtos(payload: EstoqueProdutoMovimentoCreate) -> dict[str, Any]:
     try:
+        tipo_movimentacao = (payload.tipo_movimentacao or "entrada").strip().lower()
+        if tipo_movimentacao not in {"entrada", "saida"}:
+            raise HTTPException(status_code=400, detail="tipo_movimentacao deve ser 'entrada' ou 'saida'.")
+
+        quantidade = abs(payload.quantidade)
+        if tipo_movimentacao == "saida":
+            quantidade *= -1
+
         estoque_produto = _movimentar_estoque_produto(
             produto_id=payload.produto_id,
-            quantidade=payload.quantidade,
+            quantidade=quantidade,
             alerta_minimo=payload.alerta_minimo,
             observacao=payload.observacao,
         )
