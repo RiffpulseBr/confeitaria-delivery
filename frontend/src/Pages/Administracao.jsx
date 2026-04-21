@@ -79,7 +79,10 @@ function Administracao() {
     custo_medio: '',
   })
   const [receitaForm, setReceitaForm] = useState({
+    usarNovoProduto: true,
     produto_id: '',
+    novo_produto_nome: '',
+    novo_produto_preco_venda: '',
     nome_receita: '',
     rendimento: '',
     unidade_rendimento: 'un',
@@ -174,6 +177,16 @@ function Administracao() {
 
   const onChangeReceitaForm = (field, value) => {
     setReceitaForm((current) => ({ ...current, [field]: value }))
+  }
+
+  const alternarModoProdutoReceita = (usarNovoProduto) => {
+    setReceitaForm((current) => ({
+      ...current,
+      usarNovoProduto,
+      produto_id: usarNovoProduto ? '' : current.produto_id,
+      novo_produto_nome: usarNovoProduto ? current.novo_produto_nome : '',
+      novo_produto_preco_venda: usarNovoProduto ? current.novo_produto_preco_venda : '',
+    }))
   }
 
   const atualizarIngrediente = (index, field, value) => {
@@ -380,7 +393,14 @@ function Administracao() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          produto_id: receitaForm.produto_id,
+          produto_id: receitaForm.usarNovoProduto ? null : receitaForm.produto_id,
+          novo_produto: receitaForm.usarNovoProduto
+            ? {
+                nome: receitaForm.novo_produto_nome,
+                preco_venda: receitaForm.novo_produto_preco_venda ? Number(receitaForm.novo_produto_preco_venda) : 0,
+                ativo: true,
+              }
+            : null,
           nome_receita: receitaForm.nome_receita || null,
           rendimento: receitaForm.rendimento ? Number(receitaForm.rendimento) : null,
           unidade_rendimento: receitaForm.unidade_rendimento || null,
@@ -397,7 +417,10 @@ function Administracao() {
 
       setMensagem('Receita salva com sucesso.')
       setReceitaForm({
+        usarNovoProduto: true,
         produto_id: '',
+        novo_produto_nome: '',
+        novo_produto_preco_venda: '',
         nome_receita: '',
         rendimento: '',
         unidade_rendimento: 'un',
@@ -640,22 +663,79 @@ function Administracao() {
 
         <div className="grid grid-cols-1 gap-8 xl:grid-cols-[1fr_1.15fr]">
           <form onSubmit={salvarReceita} className="space-y-4 rounded-3xl border border-slate-100 bg-slate-50 p-5">
-            <label className="block">
-              <span className="mb-2 block text-sm font-bold text-slate-700">Produto final</span>
-              <select
-                required
-                value={receitaForm.produto_id}
-                onChange={(event) => onChangeReceitaForm('produto_id', event.target.value)}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-rose-400"
-              >
-                <option value="">Selecione um produto</option>
-                {produtos.map((produto) => (
-                  <option key={produto.id} value={produto.id}>
-                    {produto.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="rounded-3xl border border-rose-100 bg-white p-4">
+              <p className="text-sm font-bold text-slate-700">Produto final</p>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => alternarModoProdutoReceita(true)}
+                  className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                    receitaForm.usarNovoProduto
+                      ? 'bg-rose-500 text-white shadow-lg'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Cadastrar novo produto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => alternarModoProdutoReceita(false)}
+                  className={`rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                    !receitaForm.usarNovoProduto
+                      ? 'bg-rose-500 text-white shadow-lg'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Usar produto existente
+                </button>
+              </div>
+            </div>
+
+            {receitaForm.usarNovoProduto ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label className="block md:col-span-2">
+                  <span className="mb-2 block text-sm font-bold text-slate-700">Nome do novo produto</span>
+                  <input
+                    required
+                    type="text"
+                    value={receitaForm.novo_produto_nome}
+                    onChange={(event) => onChangeReceitaForm('novo_produto_nome', event.target.value)}
+                    placeholder="Ex: Brigadeiro Gourmet"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-rose-400"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-sm font-bold text-slate-700">Preco de venda</span>
+                  <input
+                    min="0"
+                    step="0.01"
+                    type="number"
+                    value={receitaForm.novo_produto_preco_venda}
+                    onChange={(event) => onChangeReceitaForm('novo_produto_preco_venda', event.target.value)}
+                    placeholder="0,00"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-rose-400"
+                  />
+                </label>
+              </div>
+            ) : (
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold text-slate-700">Produto existente</span>
+                <select
+                  required
+                  value={receitaForm.produto_id}
+                  onChange={(event) => onChangeReceitaForm('produto_id', event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-800 outline-none transition focus:border-rose-400"
+                >
+                  <option value="">Selecione um produto</option>
+                  {produtos.map((produto) => (
+                    <option key={produto.id} value={produto.id}>
+                      {produto.nome}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             <label className="block">
               <span className="mb-2 block text-sm font-bold text-slate-700">Nome da receita</span>

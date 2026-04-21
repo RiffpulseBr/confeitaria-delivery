@@ -64,8 +64,15 @@ class ReceitaIngredienteCreate(BaseModel):
     unidade_medida: Optional[str] = Field(default=None, max_length=20)
 
 
+class ProdutoReceitaCreate(BaseModel):
+    nome: str = Field(min_length=2)
+    preco_venda: float = Field(default=0, ge=0)
+    ativo: bool = True
+
+
 class ReceitaCreate(BaseModel):
-    produto_id: str
+    produto_id: Optional[str] = None
+    novo_produto: Optional[ProdutoReceitaCreate] = None
     nome_receita: Optional[str] = None
     rendimento: Optional[float] = Field(default=None, gt=0)
     unidade_rendimento: Optional[str] = Field(default=None, max_length=20)

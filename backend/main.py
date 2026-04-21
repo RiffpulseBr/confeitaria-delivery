@@ -572,6 +572,28 @@ def _garantir_lista_unica_ingredientes(ingredientes: list[Any]) -> None:
         seen.add(ingrediente.insumo_id)
 
 
+def _resolver_produto_receita(payload: ReceitaCreate) -> str:
+    if payload.produto_id:
+        return payload.produto_id
+
+    if not payload.novo_produto:
+        raise HTTPException(
+            status_code=400,
+            detail="Informe um produto existente ou preencha os dados do novo produto final.",
+        )
+
+    produto_payload = {
+        "nome": payload.novo_produto.nome.strip(),
+        "preco": payload.novo_produto.preco_venda,
+        "ativo": payload.novo_produto.ativo,
+    }
+    response = _get_supabase_client().table("produtos").insert(produto_payload).execute()
+    produto = response.data[0] if response.data else None
+    if not produto or not produto.get("id"):
+        raise HTTPException(status_code=500, detail="Nao foi possivel criar o produto final da receita.")
+    return produto["id"]
+
+
 @app.get("/", include_in_schema=False)
 def read_root() -> Any:
     index_file = FRONTEND_DIST_DIR / "index.html"
@@ -666,13 +688,15 @@ def listar_receitas() -> list[dict[str, Any]]:
 @app.post("/api/receitas", status_code=status.HTTP_201_CREATED)
 def salvar_receita(payload: ReceitaCreate) -> dict[str, Any]:
     try:
-        if any(ingrediente.insumo_id == payload.produto_id for ingrediente in payload.ingredientes):
+        produto_id = _resolver_produto_receita(payload)
+
+        if any(ingrediente.insumo_id == produto_id for ingrediente in payload.ingredientes):
             raise HTTPException(status_code=400, detail="O produto final nao pode ser usado como insumo da propria receita.")
 
         _garantir_lista_unica_ingredientes(payload.ingredientes)
 
         detalhe_payload = {
-            "produto_id": payload.produto_id,
+            "produto_id": produto_id,
             "nome_receita": payload.nome_receita or None,
             "rendimento": payload.rendimento,
             "unidade_rendimento": payload.unidade_rendimento,
@@ -682,10 +706,10 @@ def salvar_receita(payload: ReceitaCreate) -> dict[str, Any]:
         }
         _get_supabase_client().table("receitas_detalhes").upsert(detalhe_payload, on_conflict="produto_id").execute()
 
-        _get_supabase_client().table("receitas").delete().eq("produto_id", payload.produto_id).execute()
+        _get_supabase_client().table("receitas").delete().eq("produto_id", produto_id).execute()
         linhas_receita = [
             {
-                "produto_id": payload.produto_id,
+                "produto_id": produto_id,
                 "insumo_id": ingrediente.insumo_id,
                 "quantidade_insumo": ingrediente.quantidade_insumo,
                 "unidade_medida": ingrediente.unidade_medida,
@@ -696,7 +720,7 @@ def salvar_receita(payload: ReceitaCreate) -> dict[str, Any]:
         _get_supabase_client().table("receitas").insert(linhas_receita).execute()
 
         receita_salva = next(
-            (item for item in _listar_receitas_formatadas() if item["produto_id"] == payload.produto_id),
+            (item for item in _listar_receitas_formatadas() if item["produto_id"] == produto_id),
             None,
         )
         return {
