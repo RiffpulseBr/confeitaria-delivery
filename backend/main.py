@@ -501,7 +501,7 @@ def _product_lookup() -> dict[str, dict[str, Any]]:
 def _stock_lookup() -> dict[str, dict[str, Any]]:
     response = (
         _get_supabase_client().table("estoque")
-        .select("id, produto_id, quantidade_atual, alerta_minimo, unidade_medida, custo_medio")
+        .select("id, produto_id, quantidade_atual, alerta_minimo, unidade_medida")
         .execute()
     )
     return {item["produto_id"]: item for item in (response.data or []) if item.get("produto_id")}
@@ -646,7 +646,6 @@ def criar_insumo(payload: InsumoCreate) -> dict[str, Any]:
             "quantidade_atual": payload.quantidade_inicial,
             "alerta_minimo": payload.alerta_minimo,
             "unidade_medida": payload.unidade_medida.strip(),
-            "custo_medio": payload.custo_medio,
             "atualizado_em": _utc_now_iso(),
         }
         estoque_response = _get_supabase_client().table("estoque").insert(estoque_payload).execute()
@@ -772,7 +771,28 @@ def listar_insumos_estoque() -> list[dict[str, Any]]:
             .order("quantidade_atual", desc=False)
             .execute()
         )
-        return response.data or []
+        itens = response.data or []
+
+        try:
+            movimentacoes = (
+                _get_supabase_client().table("movimentacoes_estoque")
+                .select("produto_id, custo_unitario, created_at")
+                .not_.is_("custo_unitario", "null")
+                .order("created_at", desc=True)
+                .execute()
+            )
+            custo_por_produto: dict[str, Any] = {}
+            for movimento in movimentacoes.data or []:
+                produto_id = movimento.get("produto_id")
+                if produto_id and produto_id not in custo_por_produto:
+                    custo_por_produto[produto_id] = movimento.get("custo_unitario")
+        except Exception:
+            custo_por_produto = {}
+
+        for item in itens:
+            item["custo_medio"] = custo_por_produto.get(item.get("produto_id"))
+
+        return itens
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
