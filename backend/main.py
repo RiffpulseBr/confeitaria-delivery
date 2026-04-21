@@ -16,6 +16,7 @@ from supabase import Client, create_client
 
 from schemas import (
     EstoqueEntradaCreate,
+    InsumoCreate,
     IfoodAckRequest,
     IfoodCloseStoreRequest,
     IfoodItemMappingCreate,
@@ -23,6 +24,7 @@ from schemas import (
     IfoodOpenStoreRequest,
     IfoodWebhookEvent,
     PedidoCreate,
+    ReceitaCreate,
 )
 
 load_dotenv()
@@ -491,6 +493,85 @@ def _normalizar_mapeamento_ifood(mapping: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _product_lookup() -> dict[str, dict[str, Any]]:
+    response = _get_supabase_client().table("produtos").select("id, nome, preco, ativo").execute()
+    return {item["id"]: item for item in (response.data or []) if item.get("id")}
+
+
+def _stock_lookup() -> dict[str, dict[str, Any]]:
+    response = (
+        _get_supabase_client().table("estoque")
+        .select("id, produto_id, quantidade_atual, alerta_minimo, unidade_medida, custo_medio")
+        .execute()
+    )
+    return {item["produto_id"]: item for item in (response.data or []) if item.get("produto_id")}
+
+
+def _load_receita_detalhes() -> dict[str, dict[str, Any]]:
+    try:
+        response = _get_supabase_client().table("receitas_detalhes").select("*").execute()
+        return {item["produto_id"]: item for item in (response.data or []) if item.get("produto_id")}
+    except Exception:
+        return {}
+
+
+def _listar_receitas_formatadas() -> list[dict[str, Any]]:
+    product_map = _product_lookup()
+    stock_map = _stock_lookup()
+    details_map = _load_receita_detalhes()
+    receitas_response = _get_supabase_client().table("receitas").select("*").execute()
+
+    receitas_by_produto: dict[str, list[dict[str, Any]]] = {}
+    for item in receitas_response.data or []:
+        produto_id = item.get("produto_id")
+        insumo_id = item.get("insumo_id")
+        if not produto_id or not insumo_id:
+            continue
+
+        insumo = product_map.get(insumo_id, {})
+        estoque = stock_map.get(insumo_id, {})
+        receitas_by_produto.setdefault(produto_id, []).append(
+            {
+                "id": item.get("id"),
+                "insumo_id": insumo_id,
+                "insumo_nome": insumo.get("nome", "Insumo sem nome"),
+                "quantidade_insumo": item.get("quantidade_insumo"),
+                "unidade_medida": item.get("unidade_medida") or estoque.get("unidade_medida") or "un",
+                "estoque_atual": estoque.get("quantidade_atual"),
+                "alerta_minimo": estoque.get("alerta_minimo"),
+            }
+        )
+
+    receitas_formatadas: list[dict[str, Any]] = []
+    for produto_id, ingredientes in receitas_by_produto.items():
+        produto = product_map.get(produto_id, {})
+        detalhes = details_map.get(produto_id, {})
+        receitas_formatadas.append(
+            {
+                "produto_id": produto_id,
+                "produto_nome": produto.get("nome", "Produto sem nome"),
+                "nome_receita": detalhes.get("nome_receita") or produto.get("nome"),
+                "rendimento": detalhes.get("rendimento"),
+                "unidade_rendimento": detalhes.get("unidade_rendimento"),
+                "modo_preparo": detalhes.get("modo_preparo"),
+                "observacoes": detalhes.get("observacoes"),
+                "updated_at": detalhes.get("updated_at"),
+                "ingredientes": sorted(ingredientes, key=lambda ingredient: ingredient["insumo_nome"]),
+            }
+        )
+
+    receitas_formatadas.sort(key=lambda item: item["produto_nome"])
+    return receitas_formatadas
+
+
+def _garantir_lista_unica_ingredientes(ingredientes: list[Any]) -> None:
+    seen: set[str] = set()
+    for ingrediente in ingredientes:
+        if ingrediente.insumo_id in seen:
+            raise HTTPException(status_code=400, detail="Nao repita o mesmo insumo na mesma receita.")
+        seen.add(ingrediente.insumo_id)
+
+
 @app.get("/", include_in_schema=False)
 def read_root() -> Any:
     index_file = FRONTEND_DIST_DIR / "index.html"
@@ -525,6 +606,110 @@ def listar_produtos() -> list[dict[str, Any]]:
         return response.data
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/insumos", status_code=status.HTTP_201_CREATED)
+def criar_insumo(payload: InsumoCreate) -> dict[str, Any]:
+    try:
+        produto_payload = {
+            "nome": payload.nome.strip(),
+            "preco": payload.preco_venda,
+            "ativo": payload.ativo,
+        }
+        produto_response = _get_supabase_client().table("produtos").insert(produto_payload).execute()
+        produto = produto_response.data[0]
+
+        estoque_payload = {
+            "produto_id": produto["id"],
+            "quantidade_atual": payload.quantidade_inicial,
+            "alerta_minimo": payload.alerta_minimo,
+            "unidade_medida": payload.unidade_medida.strip(),
+            "custo_medio": payload.custo_medio,
+            "atualizado_em": _utc_now_iso(),
+        }
+        estoque_response = _get_supabase_client().table("estoque").insert(estoque_payload).execute()
+
+        if payload.quantidade_inicial > 0:
+            try:
+                _get_supabase_client().table("movimentacoes_estoque").insert(
+                    {
+                        "estoque_id": estoque_response.data[0]["id"],
+                        "produto_id": produto["id"],
+                        "tipo_movimentacao": "entrada_inicial",
+                        "quantidade": payload.quantidade_inicial,
+                        "custo_unitario": payload.custo_medio,
+                        "observacao": "Cadastro inicial do insumo",
+                        "origem": "painel_admin",
+                        "created_at": _utc_now_iso(),
+                    }
+                ).execute()
+            except Exception:
+                pass
+
+        return {
+            "mensagem": "Insumo cadastrado com sucesso.",
+            "produto": produto,
+            "estoque": estoque_response.data[0] if estoque_response.data else estoque_payload,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/receitas")
+def listar_receitas() -> list[dict[str, Any]]:
+    try:
+        return _listar_receitas_formatadas()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/receitas", status_code=status.HTTP_201_CREATED)
+def salvar_receita(payload: ReceitaCreate) -> dict[str, Any]:
+    try:
+        if any(ingrediente.insumo_id == payload.produto_id for ingrediente in payload.ingredientes):
+            raise HTTPException(status_code=400, detail="O produto final nao pode ser usado como insumo da propria receita.")
+
+        _garantir_lista_unica_ingredientes(payload.ingredientes)
+
+        detalhe_payload = {
+            "produto_id": payload.produto_id,
+            "nome_receita": payload.nome_receita or None,
+            "rendimento": payload.rendimento,
+            "unidade_rendimento": payload.unidade_rendimento,
+            "modo_preparo": payload.modo_preparo,
+            "observacoes": payload.observacoes,
+            "updated_at": _utc_now_iso(),
+        }
+        _get_supabase_client().table("receitas_detalhes").upsert(detalhe_payload, on_conflict="produto_id").execute()
+
+        _get_supabase_client().table("receitas").delete().eq("produto_id", payload.produto_id).execute()
+        linhas_receita = [
+            {
+                "produto_id": payload.produto_id,
+                "insumo_id": ingrediente.insumo_id,
+                "quantidade_insumo": ingrediente.quantidade_insumo,
+                "unidade_medida": ingrediente.unidade_medida,
+                "updated_at": _utc_now_iso(),
+            }
+            for ingrediente in payload.ingredientes
+        ]
+        _get_supabase_client().table("receitas").insert(linhas_receita).execute()
+
+        receita_salva = next(
+            (item for item in _listar_receitas_formatadas() if item["produto_id"] == payload.produto_id),
+            None,
+        )
+        return {
+            "mensagem": "Receita salva com sucesso.",
+            "receita": receita_salva,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao salvar receita. Confira se a migracao receitas_detalhes foi aplicada. Detalhe: {exc}",
+        ) from exc
 
 
 @app.post("/api/pedidos")

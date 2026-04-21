@@ -48,6 +48,32 @@ class IfoodItemMappingCreate(BaseModel):
     observacao: Optional[str] = None
 
 
+class InsumoCreate(BaseModel):
+    nome: str = Field(min_length=2)
+    unidade_medida: str = Field(min_length=1, max_length=20)
+    quantidade_inicial: float = Field(default=0, ge=0)
+    alerta_minimo: float = Field(default=0, ge=0)
+    custo_medio: Optional[float] = Field(default=None, ge=0)
+    preco_venda: float = Field(default=0, ge=0)
+    ativo: bool = True
+
+
+class ReceitaIngredienteCreate(BaseModel):
+    insumo_id: str
+    quantidade_insumo: float = Field(gt=0)
+    unidade_medida: Optional[str] = Field(default=None, max_length=20)
+
+
+class ReceitaCreate(BaseModel):
+    produto_id: str
+    nome_receita: Optional[str] = None
+    rendimento: Optional[float] = Field(default=None, gt=0)
+    unidade_rendimento: Optional[str] = Field(default=None, max_length=20)
+    modo_preparo: Optional[str] = None
+    observacoes: Optional[str] = None
+    ingredientes: List[ReceitaIngredienteCreate] = Field(min_length=1)
+
+
 class IfoodOAuthToken(BaseModel):
     access_token: str
     expires_in: int
