@@ -51,14 +51,48 @@ set
   updated_at = timezone('utc', now()),
   atualizado_em = timezone('utc', now());
 
-update public.movimentacoes_estoque m
-   set insumo_id = i.id
-  from public.insumos i
- where m.insumo_id is null
-   and (
-     m.produto_id = i.legado_produto_id
-     or m.estoque_id = i.legado_estoque_id
-   );
+do $$
+declare
+  has_produto_id boolean;
+  has_estoque_id boolean;
+  sql text;
+begin
+  select exists (
+    select 1
+      from information_schema.columns
+     where table_schema = 'public'
+       and table_name = 'movimentacoes_estoque'
+       and column_name = 'produto_id'
+  ) into has_produto_id;
+
+  select exists (
+    select 1
+      from information_schema.columns
+     where table_schema = 'public'
+       and table_name = 'movimentacoes_estoque'
+       and column_name = 'estoque_id'
+  ) into has_estoque_id;
+
+  if has_produto_id or has_estoque_id then
+    sql := '
+      update public.movimentacoes_estoque m
+         set insumo_id = i.id
+        from public.insumos i
+       where m.insumo_id is null
+         and (false';
+
+    if has_produto_id then
+      sql := sql || ' or m.produto_id = i.legado_produto_id';
+    end if;
+
+    if has_estoque_id then
+      sql := sql || ' or m.estoque_id = i.legado_estoque_id';
+    end if;
+
+    sql := sql || ')';
+    execute sql;
+  end if;
+end $$;
 
 do $$
 begin
