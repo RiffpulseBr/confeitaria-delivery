@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { BookOpenText, ClipboardList, Loader2, Plus, Trash2 } from 'lucide-react'
 
 import { apiFetch } from '../lib/api'
@@ -23,6 +24,7 @@ const FORM_INICIAL = {
 }
 
 function Receitas() {
+  const navigate = useNavigate()
   const [insumos, setInsumos] = useState([])
   const [produtos, setProdutos] = useState([])
   const [receitas, setReceitas] = useState([])
@@ -30,6 +32,7 @@ function Receitas() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [mensagem, setMensagem] = useState('')
+  const [ultimoProdutoCriado, setUltimoProdutoCriado] = useState(null)
 
   const carregarDados = async () => {
     setLoading(true)
@@ -121,7 +124,7 @@ function Receitas() {
         throw new Error('Adicione pelo menos um ingrediente para salvar a receita.')
       }
 
-      await apiFetch('/api/receitas', {
+      const data = await apiFetch('/api/receitas', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -141,6 +144,19 @@ function Receitas() {
           ingredientes,
         }),
       })
+
+      const produtoIdCriado =
+        data?.receita?.produto_id || (form.usarNovoProduto ? data?.produto?.id : form.produto_id) || null
+
+      if (produtoIdCriado) {
+        window.sessionStorage.setItem('confeitaria:produto-destaque', produtoIdCriado)
+        setUltimoProdutoCriado({
+          id: produtoIdCriado,
+          nome: data?.receita?.produto_nome || form.novo_produto_nome || '',
+        })
+      } else {
+        setUltimoProdutoCriado(null)
+      }
 
       setForm(FORM_INICIAL)
       setMensagem('Receita salva com sucesso.')
@@ -169,6 +185,32 @@ function Receitas() {
         {mensagem && (
           <div className="mb-6 rounded-3xl border border-rose-100 bg-white/85 px-5 py-4 text-sm font-medium text-stone-700 shadow-sm">
             {mensagem}
+          </div>
+        )}
+
+        {ultimoProdutoCriado && (
+          <div className="mb-6 flex flex-col gap-3 rounded-3xl border border-amber-100 bg-amber-50/80 px-5 py-4 text-sm text-stone-700 shadow-sm md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-bold text-stone-900">Produto enviado para a aba Produtos</p>
+              <p className="mt-1">
+                {ultimoProdutoCriado.nome || 'Produto novo'} agora pode ser revisado em `Produtos`, com preco, status e destaque.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/produtos')}
+                className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-amber-600"
+              >
+                Abrir Produtos
+              </button>
+              <Link
+                to="/produtos"
+                className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-stone-700 shadow-sm transition hover:bg-stone-50"
+              >
+                Ver destaque
+              </Link>
+            </div>
           </div>
         )}
 

@@ -16,13 +16,33 @@ function Produtos() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [mensagem, setMensagem] = useState('')
+  const [produtoDestaqueId, setProdutoDestaqueId] = useState('')
 
   const carregarProdutos = async () => {
     setLoading(true)
     try {
       const data = await apiFetch('/api/produtos?ativos_apenas=false')
-      setProdutos(Array.isArray(data) ? data : [])
-      setMensagem('')
+      const lista = Array.isArray(data) ? data : []
+      setProdutos(lista)
+
+      const destaqueId = window.sessionStorage.getItem('confeitaria:produto-destaque')
+      if (destaqueId) {
+        setProdutoDestaqueId(destaqueId)
+        const destaque = lista.find((item) => item.id === destaqueId)
+        if (destaque) {
+          setForm({
+            id: destaque.id,
+            nome: destaque.nome || '',
+            preco: destaque.preco ?? '',
+            ativo: Boolean(destaque.ativo),
+          })
+          setMensagem(`Produto ${destaque.nome} veio da aba de receitas e foi destacado aqui.`)
+        }
+        window.sessionStorage.removeItem('confeitaria:produto-destaque')
+      } else {
+        setProdutoDestaqueId('')
+        setMensagem('')
+      }
     } catch (error) {
       setMensagem(error.message)
     } finally {
@@ -229,7 +249,11 @@ function Produtos() {
                     key={produto.id}
                     type="button"
                     onClick={() => editarProduto(produto)}
-                    className="rounded-3xl border border-amber-100 bg-[linear-gradient(135deg,_rgba(255,247,237,0.95),_rgba(255,255,255,0.98))] p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    className={`rounded-3xl border bg-[linear-gradient(135deg,_rgba(255,247,237,0.95),_rgba(255,255,255,0.98))] p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
+                      produto.id === produtoDestaqueId
+                        ? 'border-rose-300 ring-2 ring-rose-200'
+                        : 'border-amber-100'
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
@@ -256,6 +280,11 @@ function Produtos() {
                         >
                           {produto.tem_receita ? 'Com receita' : 'Sem receita'}
                         </span>
+                        {produto.id === produtoDestaqueId && (
+                          <span className="rounded-full bg-rose-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] text-rose-700">
+                            Novo pela receita
+                          </span>
+                        )}
                       </div>
                     </div>
                   </button>
