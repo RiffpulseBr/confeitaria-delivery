@@ -1,23 +1,42 @@
-import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom'
-import { BookHeart, ChefHat, FlaskConical, PackageSearch, Sparkles, Store, Tag, Truck } from 'lucide-react'
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { BookHeart, ChefHat, FlaskConical, PackageCheck, PackageSearch, Sparkles, Store, Tag, Truck } from 'lucide-react'
 
 import Balcao from './Pages/Balcao'
 import Estoque from './Pages/Estoque'
 import FilaPedidos from './Pages/FilaPedidos'
 import Ifood from './Pages/Ifood'
 import Insumos from './Pages/Insumos'
+import Producao from './Pages/Producao'
 import Produtos from './Pages/Produtos'
 import Receitas from './Pages/Receitas'
 
-const menuItems = [
-  { path: '/', icon: Store, label: 'Balcao', hint: 'Pedidos e caixa' },
-  { path: '/fila', icon: ChefHat, label: 'Producao', hint: 'Comandas da cozinha' },
-  { path: '/produtos', icon: Tag, label: 'Produtos', hint: 'Cardapio e preco' },
-  { path: '/receitas', icon: BookHeart, label: 'Receitas', hint: 'Fichas tecnicas' },
-  { path: '/insumos', icon: FlaskConical, label: 'Insumos', hint: 'Base da producao' },
-  { path: '/estoque', icon: PackageSearch, label: 'Estoque', hint: 'Entrada e prontos' },
-  { path: '/ifood', icon: Truck, label: 'iFood', hint: 'Mapeamento e loja' },
+const menuSections = [
+  {
+    title: 'Cadastro',
+    items: [
+      { path: '/produtos', icon: Tag, label: 'Produtos', hint: 'Cardapio e preco' },
+      { path: '/insumos', icon: FlaskConical, label: 'Insumos', hint: 'Materia-prima da cozinha' },
+      { path: '/receitas', icon: BookHeart, label: 'Receitas', hint: 'Fichas tecnicas dos lotes' },
+    ],
+  },
+  {
+    title: 'Producao',
+    items: [
+      { path: '/producao', icon: ChefHat, label: 'Ordens', hint: 'Lotes e execucao do dia' },
+      { path: '/estoque', icon: PackageSearch, label: 'Estoque', hint: 'Insumos e produtos prontos' },
+    ],
+  },
+  {
+    title: 'Vendas',
+    items: [
+      { path: '/', icon: Store, label: 'Balcao', hint: 'Atendimento e caixa' },
+      { path: '/pedidos', icon: PackageCheck, label: 'Pedidos', hint: 'Expedicao e saida' },
+      { path: '/ifood', icon: Truck, label: 'iFood', hint: 'Integracao e loja' },
+    ],
+  },
 ]
+
+const menuItems = menuSections.flatMap((section) => section.items)
 
 function Sidebar() {
   const location = useLocation()
@@ -38,40 +57,49 @@ function Sidebar() {
         </p>
       </div>
 
-      <nav className="mt-8 space-y-3">
-        {menuItems.map((item) => {
-          const Icon = item.icon
-          const ativo = location.pathname === item.path
+      <nav className="mt-8 space-y-6">
+        {menuSections.map((section) => (
+          <div key={section.title}>
+            <p className="mb-3 px-4 text-[11px] font-bold uppercase tracking-[0.3em] text-rose-100/55">
+              {section.title}
+            </p>
+            <div className="space-y-3">
+              {section.items.map((item) => {
+                const Icon = item.icon
+                const ativo = location.pathname === item.path
 
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`group flex items-center gap-4 rounded-[1.75rem] px-4 py-4 transition ${
-                ativo
-                  ? 'bg-white text-rose-950 shadow-[0_14px_40px_rgba(255,255,255,0.18)]'
-                  : 'text-rose-100/85 hover:bg-white/10 hover:text-white'
-              }`}
-            >
-              <span
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-                  ativo ? 'bg-rose-100 text-rose-700' : 'bg-white/10 text-rose-100'
-                }`}
-              >
-                <Icon size={22} />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-base font-bold">{item.label}</span>
-                <span className={`block text-sm ${ativo ? 'text-stone-500' : 'text-rose-100/70'}`}>{item.hint}</span>
-              </span>
-            </Link>
-          )
-        })}
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`group flex items-center gap-4 rounded-[1.75rem] px-4 py-4 transition ${
+                      ativo
+                        ? 'bg-white text-rose-950 shadow-[0_14px_40px_rgba(255,255,255,0.18)]'
+                        : 'text-rose-100/85 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <span
+                      className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
+                        ativo ? 'bg-rose-100 text-rose-700' : 'bg-white/10 text-rose-100'
+                      }`}
+                    >
+                      <Icon size={22} />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-base font-bold">{item.label}</span>
+                      <span className={`block text-sm ${ativo ? 'text-stone-500' : 'text-rose-100/70'}`}>{item.hint}</span>
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       <div className="mt-auto rounded-[1.75rem] border border-white/15 bg-white/10 p-5 text-sm leading-6 text-rose-100/80">
         <p className="font-bold text-white">Resumo do ambiente</p>
-        <p className="mt-2">Menu simplificado, layout mais leve e foco operacional para balcao, cozinha e estoque.</p>
+        <p className="mt-2">Fluxo alinhado ao dia a dia da confeitaria: cadastrar, produzir em lote, abastecer e vender.</p>
       </div>
     </aside>
   )
@@ -80,6 +108,9 @@ function Sidebar() {
 function MobileHeader() {
   const location = useLocation()
   const current = menuItems.find((item) => item.path === location.pathname) || menuItems[0]
+  const currentSection = menuSections.find((section) =>
+    section.items.some((item) => item.path === current.path),
+  )
   const Icon = current.icon
 
   return (
@@ -90,7 +121,9 @@ function MobileHeader() {
             <Sparkles size={20} />
           </div>
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.3em] text-rose-500">Studio Confeitaria</p>
+            <p className="text-xs font-bold uppercase tracking-[0.3em] text-rose-500">
+              {currentSection?.title || 'Studio Confeitaria'}
+            </p>
             <p className="font-serif text-2xl text-stone-900">{current.label}</p>
           </div>
         </div>
@@ -140,7 +173,9 @@ function AppShell() {
         <main className="flex-1 overflow-hidden pb-24 lg:pb-0">
           <Routes>
             <Route path="/" element={<Balcao />} />
-            <Route path="/fila" element={<FilaPedidos />} />
+            <Route path="/pedidos" element={<FilaPedidos />} />
+            <Route path="/fila" element={<Navigate replace to="/pedidos" />} />
+            <Route path="/producao" element={<Producao />} />
             <Route path="/produtos" element={<Produtos />} />
             <Route path="/receitas" element={<Receitas />} />
             <Route path="/insumos" element={<Insumos />} />

@@ -22,9 +22,13 @@ export async function apiFetch(path, options = {}) {
   if (!response.ok) {
     const message =
       (typeof data?.detail === 'string' && data.detail) ||
+      (typeof data?.detail?.message === 'string' && data.detail.message) ||
       data?.message ||
       `Falha na requisicao ${path}.`
-    throw new Error(message)
+    const error = new Error(message)
+    error.status = response.status
+    error.data = data
+    throw error
   }
 
   return data

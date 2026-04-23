@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, ChefHat, Clock3, Loader2, RefreshCcw } from 'lucide-react'
+import { CheckCircle2, Clock3, Loader2, PackageCheck, RefreshCcw } from 'lucide-react'
 
-import { getApiBaseUrl } from '../config'
+import { apiFetch, currency } from '../lib/api'
 
 function formatarHora(dataString) {
   return new Date(dataString).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
@@ -41,12 +41,7 @@ function FilaPedidos() {
     }
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/pedidos?status=pendente`)
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data?.detail || 'Nao foi possivel carregar a fila de producao.')
-      }
-
+      const data = await apiFetch('/api/pedidos?status=pendente')
       setPedidos(Array.isArray(data) ? data : [])
       setErro('')
     } catch (error) {
@@ -73,19 +68,14 @@ function FilaPedidos() {
     setErro('')
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/pedidos/${id}/concluir`, {
+      await apiFetch(`/api/pedidos/${id}/concluir`, {
         method: 'POST',
       })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data?.detail || 'Nao foi possivel concluir o pedido.')
-      }
 
       setPedidos((current) => current.filter((pedido) => pedido.id !== id))
     } catch (error) {
       console.error('Erro ao concluir pedido:', error)
       setErro(error.message)
-      alert(error.message)
     } finally {
       setUpdatingId('')
     }
@@ -106,12 +96,12 @@ function FilaPedidos() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
               <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-rose-100 px-4 py-2 text-xs font-bold uppercase tracking-[0.3em] text-rose-700">
-                <ChefHat size={14} />
-                Bancada de producao
+                <PackageCheck size={14} />
+                Saida de pedidos
               </p>
-              <h1 className="font-serif text-4xl text-stone-900 md:text-5xl">Comandas da cozinha</h1>
+              <h1 className="font-serif text-4xl text-stone-900 md:text-5xl">Pedidos para concluir</h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-stone-600">
-                Visual pensado para operacao de confeitaria: tickets grandes, leitura rapida e conclusao confiavel pelo backend.
+                Aqui ficam os pedidos abertos do balcao e do iFood. Ao concluir, o sistema baixa o estoque de produtos prontos.
               </p>
             </div>
 
@@ -146,8 +136,8 @@ function FilaPedidos() {
         {pedidos.length === 0 ? (
           <div className="flex min-h-[420px] flex-col items-center justify-center rounded-[2rem] border border-dashed border-rose-200 bg-white/70 px-8 text-center shadow-[0_18px_60px_rgba(244,114,182,0.08)]">
             <Clock3 size={64} className="mb-4 text-rose-300" />
-            <h2 className="font-serif text-3xl text-stone-900">Nenhuma comanda pendente</h2>
-            <p className="mt-3 max-w-md text-stone-500">A cozinha esta tranquila no momento. Quando entrar um novo pedido, ele aparece aqui.</p>
+            <h2 className="font-serif text-3xl text-stone-900">Nenhum pedido pendente</h2>
+            <p className="mt-3 max-w-md text-stone-500">Quando uma venda entrar no balcao ou no iFood, ela aparece aqui para expedicao.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -165,9 +155,7 @@ function FilaPedidos() {
                   </div>
                   <div className="rounded-2xl bg-white/80 px-4 py-3 text-right shadow-sm">
                     <p className="text-xs font-bold uppercase tracking-[0.25em] text-stone-400">Total</p>
-                    <p className="mt-1 text-xl font-bold text-emerald-700">
-                      R$ {Number(pedido.valor_total || 0).toFixed(2)}
-                    </p>
+                    <p className="mt-1 text-xl font-bold text-emerald-700">{currency(pedido.valor_total)}</p>
                   </div>
                 </div>
 
@@ -192,7 +180,7 @@ function FilaPedidos() {
                       </span>
                       <div>
                         <p className="font-semibold text-stone-900">{item.produtos?.nome || 'Produto indisponivel'}</p>
-                        <p className="text-sm text-stone-500">R$ {Number(item.preco_unitario || 0).toFixed(2)} por unidade</p>
+                        <p className="text-sm text-stone-500">{currency(item.preco_unitario)} por unidade</p>
                       </div>
                     </li>
                   ))}
@@ -204,7 +192,7 @@ function FilaPedidos() {
                   className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-3xl bg-stone-900 px-5 py-4 text-lg font-bold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-stone-300"
                 >
                   {updatingId === pedido.id ? <Loader2 className="animate-spin" size={22} /> : <CheckCircle2 size={22} />}
-                  Marcar como pronto
+                  Concluir pedido
                 </button>
               </article>
             ))}

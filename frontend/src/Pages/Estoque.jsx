@@ -149,7 +149,7 @@ function Estoque() {
               </p>
               <h1 className="font-serif text-4xl text-stone-900 md:text-5xl">Insumos e produtos prontos</h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-stone-600">
-                Uma aba para entrada de mercadoria e outra frente para controlar o que ja foi produzido para venda.
+                Entrada de mercadoria para insumos e ajustes de inventario para o que ja saiu da producao.
               </p>
             </div>
 
@@ -265,8 +265,8 @@ function Estoque() {
                 <Warehouse size={22} />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-stone-900">Movimentar produto pronto</h2>
-                <p className="text-sm text-stone-500">Entrada de lote produzido ou baixa manual do estoque pronto.</p>
+                <h2 className="text-2xl font-bold text-stone-900">Ajuste manual de produto pronto</h2>
+                <p className="text-sm text-stone-500">Use para correcao de inventario. Os lotes normais saem da aba Producao.</p>
               </div>
             </div>
 
@@ -296,8 +296,8 @@ function Estoque() {
                     onChange={(event) => onChangeProdutoPronto('tipo_movimentacao', event.target.value)}
                     className="w-full rounded-2xl border border-rose-100 bg-rose-50/60 px-4 py-3 text-stone-800"
                   >
-                    <option value="entrada">Entrada de lote</option>
-                    <option value="saida">Saida / ajuste</option>
+                    <option value="entrada">Ajuste positivo</option>
+                    <option value="saida">Ajuste negativo</option>
                   </select>
                 </label>
 
@@ -346,7 +346,7 @@ function Estoque() {
               className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-5 py-4 text-base font-bold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-stone-300"
             >
               {submittingProdutoPronto ? <Loader2 className="animate-spin" size={20} /> : <Warehouse size={20} />}
-              Salvar movimentacao
+              Salvar ajuste
             </button>
           </form>
         </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Loader2, Minus, PackageCheck, Plus, ShoppingBasket, Sparkles, Trash2 } from 'lucide-react'
 
-import { getApiBaseUrl } from '../config'
+import { apiFetch, currency } from '../lib/api'
 
 const cardTones = [
   'from-rose-100 via-white to-orange-50 border-rose-200',
@@ -15,16 +15,20 @@ function Balcao() {
   const [carrinho, setCarrinho] = useState([])
   const [loading, setLoading] = useState(true)
   const [enviando, setEnviando] = useState(false)
+  const [mensagem, setMensagem] = useState('')
+  const [erro, setErro] = useState('')
 
   useEffect(() => {
-    fetch(`${getApiBaseUrl()}/api/produtos?ativos_apenas=true`)
-      .then((res) => res.json())
+    apiFetch('/api/produtos?ativos_apenas=true')
       .then((data) => {
         setProdutos(Array.isArray(data) ? data : [])
-        setLoading(false)
+        setErro('')
       })
       .catch((error) => {
         console.error('Erro ao carregar produtos:', error)
+        setErro(error.message)
+      })
+      .finally(() => {
         setLoading(false)
       })
   }, [])
@@ -69,11 +73,13 @@ function Balcao() {
   const finalizarPedido = async () => {
     if (carrinho.length === 0) return
     setEnviando(true)
+    setMensagem('')
+    setErro('')
 
     const total = carrinho.reduce((acc, item) => acc + item.preco_unitario * item.quantidade, 0)
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/pedidos`, {
+      await apiFetch('/api/pedidos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -82,17 +88,11 @@ function Balcao() {
           itens: carrinho,
         }),
       })
-
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data?.detail || 'Nao foi possivel registrar o pedido.')
-      }
-
-      alert('Pedido enviado com sucesso!')
+      setMensagem('Pedido enviado com sucesso para a fila de vendas.')
       setCarrinho([])
     } catch (error) {
       console.error('Erro ao enviar pedido:', error)
-      alert(error.message || 'Erro ao conectar com o servidor.')
+      setErro(error.message || 'Erro ao conectar com o servidor.')
     } finally {
       setEnviando(false)
     }
@@ -142,6 +142,18 @@ function Balcao() {
                 </div>
               </div>
             </div>
+
+            {mensagem && (
+              <div className="mt-6 rounded-3xl border border-emerald-100 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-700">
+                {mensagem}
+              </div>
+            )}
+
+            {erro && (
+              <div className="mt-6 rounded-3xl border border-red-100 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
+                {erro}
+              </div>
+            )}
           </section>
 
           <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -162,7 +174,7 @@ function Balcao() {
                 <h2 className="font-serif text-3xl leading-tight text-stone-900">{produto.nome}</h2>
                 <p className="mt-3 text-sm leading-6 text-stone-500">Toque para adicionar na sacola de atendimento.</p>
                 <div className="mt-6 flex items-center justify-between">
-                  <span className="text-2xl font-bold text-emerald-700">R$ {Number(produto.preco || 0).toFixed(2)}</span>
+                  <span className="text-2xl font-bold text-emerald-700">{currency(produto.preco)}</span>
                   <span className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-bold text-white transition group-hover:bg-rose-600">
                     Adicionar
                   </span>
@@ -213,7 +225,7 @@ function Balcao() {
                       <div>
                         <p className="font-semibold text-stone-900">{item.nome}</p>
                         <p className="mt-1 text-sm text-emerald-700">
-                          R$ {(item.quantidade * item.preco_unitario).toFixed(2)}
+                          {currency(item.quantidade * item.preco_unitario)}
                         </p>
                       </div>
                       <span className="rounded-full bg-white px-3 py-1 text-xs font-bold uppercase tracking-[0.25em] text-rose-500">
@@ -244,7 +256,7 @@ function Balcao() {
             <div className="mt-6 border-t border-rose-100 pt-5">
               <div className="mb-5 flex items-center justify-between">
                 <span className="text-base font-medium text-stone-500">Total do pedido</span>
-                <span className="text-3xl font-bold text-emerald-700">R$ {totalCarrinho.toFixed(2)}</span>
+                <span className="text-3xl font-bold text-emerald-700">{currency(totalCarrinho)}</span>
               </div>
 
               <button
