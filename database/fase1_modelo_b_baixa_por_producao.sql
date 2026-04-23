@@ -18,13 +18,31 @@ create extension if not exists pgcrypto;
 -- Limpeza de objetos legados
 -- =========================================================
 
-drop trigger if exists trigger_baixa_estoque on public.pedidos;
-drop trigger if exists trg_baixar_estoque_por_receita on public.pedidos;
-drop trigger if exists trg_baixar_estoque_produto_pedido on public.pedidos;
-drop trigger if exists trg_touch_ordem_producao on public.ordens_producao;
-drop trigger if exists trg_concluir_ordem_producao on public.ordens_producao;
-drop trigger if exists trg_concluir_ordem_producao_insert on public.ordens_producao;
-drop trigger if exists trg_concluir_ordem_producao_update on public.ordens_producao;
+do $$
+begin
+  if exists (
+    select 1
+      from information_schema.tables
+     where table_schema = 'public'
+       and table_name = 'pedidos'
+  ) then
+    execute 'drop trigger if exists trigger_baixa_estoque on public.pedidos';
+    execute 'drop trigger if exists trg_baixar_estoque_por_receita on public.pedidos';
+    execute 'drop trigger if exists trg_baixar_estoque_produto_pedido on public.pedidos';
+  end if;
+
+  if exists (
+    select 1
+      from information_schema.tables
+     where table_schema = 'public'
+       and table_name = 'ordens_producao'
+  ) then
+    execute 'drop trigger if exists trg_touch_ordem_producao on public.ordens_producao';
+    execute 'drop trigger if exists trg_concluir_ordem_producao on public.ordens_producao';
+    execute 'drop trigger if exists trg_concluir_ordem_producao_insert on public.ordens_producao';
+    execute 'drop trigger if exists trg_concluir_ordem_producao_update on public.ordens_producao';
+  end if;
+end $$;
 
 drop function if exists public.baixar_estoque_pedido_concluido() cascade;
 drop function if exists public.fn_baixar_estoque_por_receita() cascade;
@@ -53,6 +71,27 @@ create table if not exists public.estoque_produtos (
 
 create unique index if not exists estoque_produtos_produto_id_unique_idx
   on public.estoque_produtos (produto_id);
+
+create table if not exists public.receitas (
+  id uuid primary key default gen_random_uuid(),
+  produto_id uuid not null references public.produtos(id) on delete cascade,
+  nome_receita text,
+  rendimento numeric(14, 3),
+  unidade_rendimento text,
+  modo_preparo text,
+  observacoes text,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.receita_itens (
+  id uuid primary key default gen_random_uuid(),
+  receita_id uuid not null references public.receitas(id) on delete cascade,
+  insumo_id uuid not null references public.insumos(id) on delete restrict,
+  quantidade_insumo numeric(14, 3) not null check (quantidade_insumo > 0),
+  unidade_medida text,
+  created_at timestamptz not null default timezone('utc', now())
+);
 
 create unique index if not exists receitas_produto_id_unique_idx
   on public.receitas (produto_id);
