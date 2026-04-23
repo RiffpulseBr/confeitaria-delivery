@@ -14,6 +14,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from supabase import Client, create_client
 
+from routers.pedidos import router as pedidos_router
+from routers.producao import router as producao_router
 from schemas import (
     EstoqueEntradaCreate,
     EstoqueProdutoCreate,
@@ -59,6 +61,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(pedidos_router)
+app.include_router(producao_router)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
@@ -447,6 +452,26 @@ def _fetch_estoque_item(entrada: EstoqueEntradaCreate) -> dict[str, Any]:
     return itens[0]
 
 
+def _registrar_movimentacao_estoque(payload: dict[str, Any]) -> None:
+    try:
+        get_payload = {
+            "tipo_movimentacao": payload["tipo_movimentacao"],
+            "estoque_alvo": payload["estoque_alvo"],
+            "quantidade": payload["quantidade"],
+            "origem_tipo": payload["origem_tipo"],
+            "origem_id": payload.get("origem_id"),
+            "insumo_id": payload.get("insumo_id"),
+            "produto_id": payload.get("produto_id"),
+            "custo_unitario": payload.get("custo_unitario"),
+            "documento": payload.get("documento"),
+            "observacao": payload.get("observacao"),
+            "created_at": payload.get("created_at") or _utc_now_iso(),
+        }
+        _get_supabase_client().table("movimentacoes_estoque").insert(get_payload).execute()
+    except Exception:
+        pass
+
+
 def _update_estoque_quantity(entrada: EstoqueEntradaCreate) -> dict[str, Any]:
     item = _fetch_estoque_item(entrada)
     quantidade_atual = float(item.get("quantidade_atual") or 0)
@@ -454,26 +479,25 @@ def _update_estoque_quantity(entrada: EstoqueEntradaCreate) -> dict[str, Any]:
 
     response = (
         _get_supabase_client().table("insumos")
-        .update({"quantidade_atual": nova_quantidade, "atualizado_em": _utc_now_iso()})
+        .update({"quantidade_atual": nova_quantidade, "updated_at": _utc_now_iso(), "atualizado_em": _utc_now_iso()})
         .eq("id", item["id"])
         .execute()
     )
 
-    try:
-        _get_supabase_client().table("movimentacoes_estoque").insert(
-            {
-                "insumo_id": item["id"],
-                "tipo_movimentacao": "entrada",
-                "quantidade": entrada.quantidade,
-                "custo_unitario": entrada.custo_unitario,
-                "documento": entrada.documento,
-                "observacao": entrada.observacao,
-                "origem": "painel_admin",
-                "created_at": _utc_now_iso(),
-            }
-        ).execute()
-    except Exception:
-        pass
+    _registrar_movimentacao_estoque(
+        {
+            "insumo_id": item["id"],
+            "tipo_movimentacao": "entrada_mercadoria",
+            "estoque_alvo": "insumo",
+            "quantidade": entrada.quantidade,
+            "custo_unitario": entrada.custo_unitario,
+            "documento": entrada.documento,
+            "observacao": entrada.observacao or "Entrada manual de mercadoria",
+            "origem_tipo": "entrada_mercadoria",
+            "origem_id": item["id"],
+            "created_at": _utc_now_iso(),
+        }
+    )
 
     return response.data[0] if response.data else {**item, "quantidade_atual": nova_quantidade}
 
@@ -869,20 +893,19 @@ def criar_insumo(payload: InsumoCreate) -> dict[str, Any]:
         insumo = insumo_response.data[0]
 
         if payload.quantidade_inicial > 0:
-            try:
-                _get_supabase_client().table("movimentacoes_estoque").insert(
-                    {
-                        "insumo_id": insumo["id"],
-                        "tipo_movimentacao": "entrada_inicial",
-                        "quantidade": payload.quantidade_inicial,
-                        "custo_unitario": payload.custo_medio,
-                        "observacao": "Cadastro inicial do insumo",
-                        "origem": "painel_admin",
-                        "created_at": _utc_now_iso(),
-                    }
-                ).execute()
-            except Exception:
-                pass
+            _registrar_movimentacao_estoque(
+                {
+                    "insumo_id": insumo["id"],
+                    "tipo_movimentacao": "entrada_inicial",
+                    "estoque_alvo": "insumo",
+                    "quantidade": payload.quantidade_inicial,
+                    "custo_unitario": payload.custo_medio,
+                    "observacao": "Cadastro inicial do insumo",
+                    "origem_tipo": "ajuste_manual",
+                    "origem_id": insumo["id"],
+                    "created_at": _utc_now_iso(),
+                }
+            )
 
         return {
             "mensagem": "Insumo cadastrado com sucesso.",
@@ -935,6 +958,18 @@ def movimentar_estoque_produtos(payload: EstoqueProdutoMovimentoCreate) -> dict[
             alerta_minimo=payload.alerta_minimo,
             observacao=payload.observacao,
         )
+        _registrar_movimentacao_estoque(
+            {
+                "produto_id": payload.produto_id,
+                "tipo_movimentacao": "entrada_manual" if tipo_movimentacao == "entrada" else "saida_manual",
+                "estoque_alvo": "produto_pronto",
+                "quantidade": abs(payload.quantidade),
+                "observacao": payload.observacao or "Ajuste manual de estoque de produto pronto",
+                "origem_tipo": "ajuste_manual",
+                "origem_id": payload.produto_id,
+                "created_at": _utc_now_iso(),
+            }
+        )
         return {
             "mensagem": "Movimentacao de produto pronto registrada com sucesso.",
             "estoque_produto": estoque_produto,
@@ -950,6 +985,18 @@ def registrar_entrada_produto(payload: EstoqueProdutoEntradaCreate) -> dict[str,
             produto_id=payload.produto_id,
             quantidade=payload.quantidade,
             observacao=payload.observacao,
+        )
+        _registrar_movimentacao_estoque(
+            {
+                "produto_id": payload.produto_id,
+                "tipo_movimentacao": "entrada_manual",
+                "estoque_alvo": "produto_pronto",
+                "quantidade": payload.quantidade,
+                "observacao": payload.observacao or "Entrada manual de produto pronto",
+                "origem_tipo": "ajuste_manual",
+                "origem_id": payload.produto_id,
+                "created_at": _utc_now_iso(),
+            }
         )
         return {
             "mensagem": "Entrada de produto pronto registrada com sucesso.",
@@ -1023,95 +1070,6 @@ def salvar_receita(payload: ReceitaCreate) -> dict[str, Any]:
             status_code=500,
             detail=f"Falha ao salvar receita. Confira se a reestruturacao do banco foi aplicada. Detalhe: {exc}",
         ) from exc
-
-
-@app.post("/api/pedidos")
-def criar_pedido(pedido: PedidoCreate) -> dict[str, Any]:
-    try:
-        novo_pedido = {
-            "origem": pedido.origem,
-            "status": "pendente",
-            "valor_total": pedido.valor_total,
-        }
-        res_pedido = _get_supabase_client().table("pedidos").insert(novo_pedido).execute()
-        pedido_id = res_pedido.data[0]["id"]
-
-        itens_para_inserir = [
-            {
-                "pedido_id": pedido_id,
-                "produto_id": item.produto_id,
-                "quantidade": item.quantidade,
-                "preco_unitario": item.preco_unitario,
-            }
-            for item in pedido.itens
-        ]
-
-        _get_supabase_client().table("itens_pedido").insert(itens_para_inserir).execute()
-        return {"mensagem": "Pedido criado com sucesso!", "pedido_id": pedido_id}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@app.get("/api/pedidos")
-def listar_pedidos(status: Optional[str] = Query(default=None)) -> list[dict[str, Any]]:
-    try:
-        return _listar_pedidos(status_filter=status)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@app.post("/api/pedidos/{pedido_id}/concluir")
-def concluir_pedido(pedido_id: str) -> dict[str, Any]:
-    try:
-        consulta = (
-            _get_supabase_client()
-            .table("pedidos")
-            .select(
-                """
-                id,
-                status,
-                itens_pedido (
-                  produto_id,
-                  quantidade,
-                  produtos (nome)
-                )
-                """
-            )
-            .eq("id", pedido_id)
-            .limit(1)
-            .execute()
-        )
-        pedido = consulta.data[0] if consulta.data else None
-        if not pedido:
-            raise HTTPException(status_code=404, detail="Pedido nao encontrado.")
-
-        if pedido.get("status") == "concluido":
-            return {
-                "mensagem": "Pedido ja estava concluido.",
-                "pedido_id": pedido_id,
-            }
-
-        produtos_sem_receita = _produtos_sem_receita(
-            [item.get("produto_id") for item in (pedido.get("itens_pedido") or [])]
-        )
-        if produtos_sem_receita:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "message": "Existem produtos do pedido sem receita cadastrada. Cadastre a ficha tecnica antes de concluir para baixar o estoque corretamente.",
-                    "produtos_sem_receita": produtos_sem_receita,
-                },
-            )
-
-        response = _get_supabase_client().table("pedidos").update({"status": "concluido"}).eq("id", pedido_id).execute()
-        return {
-            "mensagem": "Pedido concluido com sucesso.",
-            "pedido": response.data[0] if response.data else {"id": pedido_id, "status": "concluido"},
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Falha ao concluir pedido: {exc}") from exc
 
 
 @app.get("/api/estoque/insumos")

@@ -27,6 +27,12 @@ class PedidoCreate(BaseModel):
     itens: List[ItemPedidoCreate]
 
 
+class OrdemProducaoCreate(BaseModel):
+    produto_id: str
+    quantidade_produzida: float = Field(gt=0)
+    observacao: Optional[str] = None
+
+
 class IfoodAckEvent(BaseModel):
     id: str
 
