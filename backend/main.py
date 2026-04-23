@@ -687,6 +687,58 @@ def _listar_receitas_formatadas() -> list[dict[str, Any]]:
     return receitas_formatadas
 
 
+def _receita_item_count_by_produto() -> dict[str, int]:
+    receitas_response = _get_supabase_client().table("receitas").select("id, produto_id").execute()
+    receita_itens_response = _get_supabase_client().table("receita_itens").select("receita_id").execute()
+
+    produto_by_receita = {
+        receita["id"]: receita["produto_id"]
+        for receita in (receitas_response.data or [])
+        if receita.get("id") and receita.get("produto_id")
+    }
+
+    counts: dict[str, int] = {}
+    for item in receita_itens_response.data or []:
+        produto_id = produto_by_receita.get(item.get("receita_id"))
+        if not produto_id:
+            continue
+        counts[produto_id] = counts.get(produto_id, 0) + 1
+    return counts
+
+
+def _listar_produtos_com_receita_status(ativos_apenas: bool = False) -> list[dict[str, Any]]:
+    produtos = _listar_produtos(ativos_apenas=ativos_apenas)
+    item_count_by_produto = _receita_item_count_by_produto()
+
+    for produto in produtos:
+        total_ingredientes = item_count_by_produto.get(produto.get("id"), 0)
+        produto["tem_receita"] = total_ingredientes > 0
+        produto["total_ingredientes"] = total_ingredientes
+    return produtos
+
+
+def _produtos_sem_receita(produto_ids: Iterable[str]) -> list[dict[str, Any]]:
+    ids = [produto_id for produto_id in produto_ids if produto_id]
+    if not ids:
+        return []
+
+    item_count_by_produto = _receita_item_count_by_produto()
+    product_map = _product_lookup()
+
+    faltantes: list[dict[str, Any]] = []
+    for produto_id in ids:
+        if item_count_by_produto.get(produto_id, 0) > 0:
+            continue
+        produto = product_map.get(produto_id, {})
+        faltantes.append(
+            {
+                "produto_id": produto_id,
+                "produto_nome": produto.get("nome", "Produto sem nome"),
+            }
+        )
+    return faltantes
+
+
 def _garantir_lista_unica_ingredientes(ingredientes: list[Any]) -> None:
     seen: set[str] = set()
     for ingrediente in ingredientes:
@@ -747,7 +799,7 @@ def runtime_config() -> dict[str, str]:
 @app.get("/api/produtos")
 def listar_produtos(ativos_apenas: bool = Query(default=False)) -> list[dict[str, Any]]:
     try:
-        return _listar_produtos(ativos_apenas=ativos_apenas)
+        return _listar_produtos_com_receita_status(ativos_apenas=ativos_apenas)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -1011,7 +1063,24 @@ def listar_pedidos(status: Optional[str] = Query(default=None)) -> list[dict[str
 @app.post("/api/pedidos/{pedido_id}/concluir")
 def concluir_pedido(pedido_id: str) -> dict[str, Any]:
     try:
-        consulta = _get_supabase_client().table("pedidos").select("id, status").eq("id", pedido_id).limit(1).execute()
+        consulta = (
+            _get_supabase_client()
+            .table("pedidos")
+            .select(
+                """
+                id,
+                status,
+                itens_pedido (
+                  produto_id,
+                  quantidade,
+                  produtos (nome)
+                )
+                """
+            )
+            .eq("id", pedido_id)
+            .limit(1)
+            .execute()
+        )
         pedido = consulta.data[0] if consulta.data else None
         if not pedido:
             raise HTTPException(status_code=404, detail="Pedido nao encontrado.")
@@ -1021,6 +1090,18 @@ def concluir_pedido(pedido_id: str) -> dict[str, Any]:
                 "mensagem": "Pedido ja estava concluido.",
                 "pedido_id": pedido_id,
             }
+
+        produtos_sem_receita = _produtos_sem_receita(
+            [item.get("produto_id") for item in (pedido.get("itens_pedido") or [])]
+        )
+        if produtos_sem_receita:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Existem produtos do pedido sem receita cadastrada. Cadastre a ficha tecnica antes de concluir para baixar o estoque corretamente.",
+                    "produtos_sem_receita": produtos_sem_receita,
+                },
+            )
 
         response = _get_supabase_client().table("pedidos").update({"status": "concluido"}).eq("id", pedido_id).execute()
         return {

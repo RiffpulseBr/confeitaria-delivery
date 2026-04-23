@@ -113,8 +113,10 @@ function Produtos() {
                 <p className="mt-2 text-3xl font-bold text-stone-900">{produtos.filter((item) => item.ativo).length}</p>
               </div>
               <div className="rounded-3xl bg-rose-50 px-5 py-4">
-                <p className="text-xs font-bold uppercase tracking-[0.25em] text-rose-500">Total cadastrado</p>
-                <p className="mt-2 text-3xl font-bold text-stone-900">{produtos.length}</p>
+                <p className="text-xs font-bold uppercase tracking-[0.25em] text-rose-500">Sem receita</p>
+                <p className="mt-2 text-3xl font-bold text-stone-900">
+                  {produtos.filter((item) => !item.tem_receita).length}
+                </p>
               </div>
             </div>
           </div>
@@ -233,14 +235,28 @@ function Produtos() {
                       <div>
                         <p className="font-serif text-2xl text-stone-900">{produto.nome}</p>
                         <p className="mt-2 text-sm text-stone-500">{currency(produto.preco)}</p>
+                        <p className="mt-2 text-xs font-bold uppercase tracking-[0.22em] text-stone-400">
+                          {produto.tem_receita
+                            ? `${produto.total_ingredientes || 0} ingrediente(s) na ficha`
+                            : 'Sem ficha tecnica'}
+                        </p>
                       </div>
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] ${
-                          produto.ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-200 text-stone-600'
-                        }`}
-                      >
-                        {produto.ativo ? 'Ativo' : 'Oculto'}
-                      </span>
+                      <div className="flex flex-col items-end gap-2">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] ${
+                            produto.ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-200 text-stone-600'
+                          }`}
+                        >
+                          {produto.ativo ? 'Ativo' : 'Oculto'}
+                        </span>
+                        <span
+                          className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-[0.22em] ${
+                            produto.tem_receita ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          {produto.tem_receita ? 'Com receita' : 'Sem receita'}
+                        </span>
+                      </div>
                     </div>
                   </button>
                 ))}
