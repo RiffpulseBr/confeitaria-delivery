@@ -83,6 +83,11 @@ function Producao() {
     return ordens.filter((item) => item.status === filtroStatus)
   }, [filtroStatus, ordens])
 
+  const produtoSelecionado = produtos.find((produto) => produto.id === form.produto_id)
+  const quantidadeLotes = Number(form.quantidade_produzida || 0)
+  const rendimentoSelecionado = Number(produtoSelecionado?.rendimento_receita || 1)
+  const quantidadeFinalPrevista = quantidadeLotes * rendimentoSelecionado
+
   const onChange = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }))
   }
@@ -209,7 +214,7 @@ function Producao() {
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-bold text-stone-700">Quantidade a produzir</span>
+                <span className="mb-2 block text-sm font-bold text-stone-700">Quantidade de receitas</span>
                 <input
                   required
                   min="0.001"
@@ -220,6 +225,17 @@ function Producao() {
                   className="w-full rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3 text-stone-800"
                 />
               </label>
+
+              {produtoSelecionado && (
+                <div className="rounded-2xl border border-amber-100 bg-white px-4 py-3 text-sm text-stone-600">
+                  <p className="font-bold text-stone-900">
+                    Entrada prevista: {quantidadeFinalPrevista.toLocaleString('pt-BR')} {produtoSelecionado.unidade_rendimento || 'un'}
+                  </p>
+                  <p className="mt-1">
+                    Cada receita rende {Number(rendimentoSelecionado || 1).toLocaleString('pt-BR')} {produtoSelecionado.unidade_rendimento || 'un'}.
+                  </p>
+                </div>
+              )}
 
               <label className="block">
                 <span className="mb-2 block text-sm font-bold text-stone-700">Observacao</span>
@@ -299,7 +315,7 @@ function Producao() {
                       <div>
                         <p className="font-serif text-2xl text-stone-900">{ordem.produto_nome}</p>
                         <p className="mt-1 text-sm text-stone-500">
-                          Lote de {Number(ordem.quantidade_produzida || 0).toLocaleString('pt-BR')} un
+                          {Number(ordem.quantidade_produzida || 0).toLocaleString('pt-BR')} receita(s) | Entrada prevista: {Number(ordem.quantidade_final_prevista || ordem.quantidade_produzida || 0).toLocaleString('pt-BR')} {ordem.unidade_rendimento || 'un'}
                         </p>
                         <p className="mt-1 text-sm text-stone-400">
                           Criada em {fmtDate(ordem.created_at)} | Estoque pronto atual: {Number(ordem.estoque_produto_atual || 0).toLocaleString('pt-BR')} un

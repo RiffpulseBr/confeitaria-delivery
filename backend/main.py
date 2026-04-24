@@ -785,14 +785,32 @@ def _receita_item_count_by_produto() -> dict[str, int]:
     return counts
 
 
+def _receita_meta_by_produto() -> dict[str, dict[str, Any]]:
+    response = _get_supabase_client().table("receitas").select(
+        "produto_id, rendimento, unidade_rendimento"
+    ).execute()
+    return {
+        item["produto_id"]: {
+            "rendimento": item.get("rendimento") or 1,
+            "unidade_rendimento": item.get("unidade_rendimento") or "un",
+        }
+        for item in (response.data or [])
+        if item.get("produto_id")
+    }
+
+
 def _listar_produtos_com_receita_status(ativos_apenas: bool = False) -> list[dict[str, Any]]:
     produtos = _listar_produtos(ativos_apenas=ativos_apenas)
     item_count_by_produto = _receita_item_count_by_produto()
+    receita_meta_by_produto = _receita_meta_by_produto()
 
     for produto in produtos:
         total_ingredientes = item_count_by_produto.get(produto.get("id"), 0)
+        receita_meta = receita_meta_by_produto.get(produto.get("id"), {})
         produto["tem_receita"] = total_ingredientes > 0
         produto["total_ingredientes"] = total_ingredientes
+        produto["rendimento_receita"] = receita_meta.get("rendimento", 1)
+        produto["unidade_rendimento"] = receita_meta.get("unidade_rendimento", "un")
     return produtos
 
 

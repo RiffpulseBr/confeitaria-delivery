@@ -356,6 +356,9 @@ language plpgsql
 as $$
 declare
   receita_encontrada uuid;
+  rendimento_receita numeric(14, 3);
+  unidade_receita text;
+  quantidade_final numeric(14, 3);
   total_ingredientes integer;
   registro record;
 begin
@@ -367,8 +370,11 @@ begin
     return new;
   end if;
 
-  select r.id
-    into receita_encontrada
+  select
+      r.id,
+      coalesce(nullif(r.rendimento, 0), 1),
+      coalesce(r.unidade_rendimento, 'un')
+    into receita_encontrada, rendimento_receita, unidade_receita
     from public.receitas r
    where r.produto_id = new.produto_id
    limit 1;
@@ -376,6 +382,8 @@ begin
   if receita_encontrada is null then
     raise exception 'O produto % nao possui receita cadastrada para producao.', new.produto_id;
   end if;
+
+  quantidade_final := new.quantidade_produzida * rendimento_receita;
 
   select count(*)
     into total_ingredientes
@@ -444,7 +452,7 @@ begin
     updated_at
   ) values (
     new.produto_id,
-    new.quantidade_produzida,
+    quantidade_final,
     0,
     'Saldo iniciado automaticamente por conclusao de ordem de producao',
     timezone('utc', now()),
@@ -468,7 +476,7 @@ begin
     'entrada_producao',
     'produto_pronto',
     new.produto_id,
-    new.quantidade_produzida,
+    quantidade_final,
     'ordem_producao',
     new.id,
     'Entrada automatica de produto pronto por conclusao da ordem de producao',

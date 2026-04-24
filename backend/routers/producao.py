@@ -13,23 +13,36 @@ def _product_lookup() -> dict[str, dict[str, Any]]:
     return {item["id"]: item for item in (response.data or []) if item.get("id")}
 
 
-def _receita_item_count_by_produto() -> dict[str, int]:
-    receitas_response = get_supabase_client().table("receitas").select("id, produto_id").execute()
+def _receita_lookup_by_produto() -> dict[str, dict[str, Any]]:
+    receitas_response = get_supabase_client().table("receitas").select(
+        "id, produto_id, rendimento, unidade_rendimento"
+    ).execute()
     receita_itens_response = get_supabase_client().table("receita_itens").select("receita_id").execute()
 
     produto_by_receita = {
-        receita["id"]: receita["produto_id"]
+        receita["id"]: receita
         for receita in (receitas_response.data or [])
         if receita.get("id") and receita.get("produto_id")
     }
 
     counts: dict[str, int] = {}
     for item in receita_itens_response.data or []:
-        produto_id = produto_by_receita.get(item.get("receita_id"))
-        if not produto_id:
+        receita = produto_by_receita.get(item.get("receita_id"))
+        if not receita:
             continue
+        produto_id = receita["produto_id"]
         counts[produto_id] = counts.get(produto_id, 0) + 1
-    return counts
+
+    receitas_por_produto: dict[str, dict[str, Any]] = {}
+    for receita in produto_by_receita.values():
+        produto_id = receita["produto_id"]
+        receitas_por_produto[produto_id] = {
+            "receita_id": receita["id"],
+            "rendimento": receita.get("rendimento") or 1,
+            "unidade_rendimento": receita.get("unidade_rendimento") or "un",
+            "total_ingredientes": counts.get(produto_id, 0),
+        }
+    return receitas_por_produto
 
 
 def _estoque_produto_lookup() -> dict[str, dict[str, Any]]:
@@ -40,20 +53,26 @@ def _estoque_produto_lookup() -> dict[str, dict[str, Any]]:
 def _formatar_ordens(raw_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     produtos = _product_lookup()
     estoque_produto = _estoque_produto_lookup()
-    receita_counts = _receita_item_count_by_produto()
+    receitas_por_produto = _receita_lookup_by_produto()
     ordens: list[dict[str, Any]] = []
 
     for ordem in raw_rows:
         produto_id = ordem.get("produto_id")
         produto = produtos.get(produto_id, {})
         estoque = estoque_produto.get(produto_id, {})
+        receita = receitas_por_produto.get(produto_id, {})
+        rendimento = float(receita.get("rendimento") or 1)
+        quantidade_lotes = float(ordem.get("quantidade_produzida") or 0)
         ordens.append(
             {
                 **ordem,
                 "produto_nome": produto.get("nome", "Produto sem nome"),
                 "produto_ativo": produto.get("ativo", True),
-                "total_ingredientes": receita_counts.get(produto_id, 0),
-                "tem_receita": receita_counts.get(produto_id, 0) > 0,
+                "total_ingredientes": receita.get("total_ingredientes", 0),
+                "tem_receita": receita.get("total_ingredientes", 0) > 0,
+                "rendimento_receita": rendimento,
+                "unidade_rendimento": receita.get("unidade_rendimento", "un"),
+                "quantidade_final_prevista": quantidade_lotes * rendimento,
                 "estoque_produto_atual": estoque.get("quantidade_atual", 0),
             }
         )
