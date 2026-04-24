@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FlaskConical, Loader2, PackagePlus } from 'lucide-react'
+import { FlaskConical, Loader2, PackageCheck, PackagePlus, RefreshCcw } from 'lucide-react'
 
 import { apiFetch, currency } from '../lib/api'
 
@@ -9,6 +9,13 @@ const FORM_INICIAL = {
   quantidade_inicial: '',
   alerta_minimo: '',
   custo_medio: '',
+}
+
+const ENTRADA_INICIAL = {
+  insumo_id: '',
+  quantidade: '',
+  custo_unitario: '',
+  documento: '',
 }
 
 function statusBadge(item) {
@@ -36,8 +43,10 @@ function statusTexto(item) {
 function Insumos() {
   const [insumos, setInsumos] = useState([])
   const [form, setForm] = useState(FORM_INICIAL)
+  const [entradaForm, setEntradaForm] = useState(ENTRADA_INICIAL)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [submittingEntrada, setSubmittingEntrada] = useState(false)
   const [mensagem, setMensagem] = useState('')
 
   const carregarInsumos = async () => {
@@ -59,6 +68,10 @@ function Insumos() {
 
   const onChange = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }))
+  }
+
+  const onChangeEntrada = (field, value) => {
+    setEntradaForm((current) => ({ ...current, [field]: value }))
   }
 
   const cadastrarInsumo = async (event) => {
@@ -88,6 +101,33 @@ function Insumos() {
     }
   }
 
+  const registrarEntrada = async (event) => {
+    event.preventDefault()
+    setSubmittingEntrada(true)
+    setMensagem('')
+
+    try {
+      await apiFetch('/api/estoque/entrada', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          insumo_id: entradaForm.insumo_id,
+          quantidade: Number(entradaForm.quantidade),
+          custo_unitario: entradaForm.custo_unitario ? Number(entradaForm.custo_unitario) : null,
+          documento: entradaForm.documento || null,
+        }),
+      })
+
+      setEntradaForm(ENTRADA_INICIAL)
+      setMensagem('Entrada de mercadoria registrada com sucesso.')
+      await carregarInsumos()
+    } catch (error) {
+      setMensagem(error.message)
+    } finally {
+      setSubmittingEntrada(false)
+    }
+  }
+
   return (
     <div className="h-full overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(187,247,208,0.3),_transparent_32%),linear-gradient(135deg,_#f7fee7,_#fffbeb_48%,_#fff7ed)] p-8">
       <div className="mx-auto max-w-7xl">
@@ -108,95 +148,174 @@ function Insumos() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-8 xl:grid-cols-[0.9fr_1.25fr]">
-          <form onSubmit={cadastrarInsumo} className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-[0_18px_60px_rgba(120,53,15,0.1)] backdrop-blur">
-            <div className="mb-6 flex items-center gap-3">
-              <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
-                <PackagePlus size={22} />
+        <div className="grid grid-cols-1 gap-8 xl:grid-cols-[0.95fr_1.1fr]">
+          <div className="space-y-8">
+            <form onSubmit={cadastrarInsumo} className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-[0_18px_60px_rgba(120,53,15,0.1)] backdrop-blur">
+              <div className="mb-6 flex items-center gap-3">
+                <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
+                  <PackagePlus size={22} />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-stone-900">Novo insumo</h2>
+                  <p className="text-sm text-stone-500">Comece o estoque de producao do jeito certo.</p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-2xl font-bold text-stone-900">Novo insumo</h2>
-                <p className="text-sm text-stone-500">Comece o estoque de producao do jeito certo.</p>
-              </div>
-            </div>
 
-            <div className="space-y-4">
-              <label className="block">
-                <span className="mb-2 block text-sm font-bold text-stone-700">Nome</span>
-                <input
-                  required
-                  type="text"
-                  value={form.nome}
-                  onChange={(event) => onChange('nome', event.target.value)}
-                  className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
-                />
-              </label>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-4">
                 <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-stone-700">Unidade</span>
+                  <span className="mb-2 block text-sm font-bold text-stone-700">Nome</span>
+                  <input
+                    required
+                    type="text"
+                    value={form.nome}
+                    onChange={(event) => onChange('nome', event.target.value)}
+                    className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
+                  />
+                </label>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-stone-700">Unidade</span>
+                    <select
+                      value={form.unidade_medida}
+                      onChange={(event) => onChange('unidade_medida', event.target.value)}
+                      className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
+                    >
+                      <option value="kg">kg</option>
+                      <option value="g">g</option>
+                      <option value="l">l</option>
+                      <option value="ml">ml</option>
+                      <option value="un">un</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-stone-700">Estoque inicial</span>
+                    <input
+                      min="0"
+                      step="0.001"
+                      type="number"
+                      value={form.quantidade_inicial}
+                      onChange={(event) => onChange('quantidade_inicial', event.target.value)}
+                      className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
+                    />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-stone-700">Alerta minimo</span>
+                    <input
+                      min="0"
+                      step="0.001"
+                      type="number"
+                      value={form.alerta_minimo}
+                      onChange={(event) => onChange('alerta_minimo', event.target.value)}
+                      className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-stone-700">Custo de referencia</span>
+                    <input
+                      min="0"
+                      step="0.01"
+                      type="number"
+                      value={form.custo_medio}
+                      onChange={(event) => onChange('custo_medio', event.target.value)}
+                      className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-5 py-4 text-base font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-stone-300"
+              >
+                {saving ? <Loader2 className="animate-spin" size={20} /> : <PackagePlus size={20} />}
+                Cadastrar insumo
+              </button>
+            </form>
+
+            <form onSubmit={registrarEntrada} className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-[0_18px_60px_rgba(120,53,15,0.1)] backdrop-blur">
+              <div className="mb-6 flex items-center gap-3">
+                <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
+                  <PackageCheck size={22} />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-stone-900">Entrada de mercadoria</h2>
+                  <p className="text-sm text-stone-500">Registre compras e reposicoes de insumos.</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-bold text-stone-700">Insumo</span>
                   <select
-                    value={form.unidade_medida}
-                    onChange={(event) => onChange('unidade_medida', event.target.value)}
+                    required
+                    value={entradaForm.insumo_id}
+                    onChange={(event) => onChangeEntrada('insumo_id', event.target.value)}
                     className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
                   >
-                    <option value="kg">kg</option>
-                    <option value="g">g</option>
-                    <option value="l">l</option>
-                    <option value="ml">ml</option>
-                    <option value="un">un</option>
+                    <option value="">Selecione um insumo</option>
+                    {insumos.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.nome} | Atual: {item.quantidade_atual} {item.unidade_medida || 'un'}
+                      </option>
+                    ))}
                   </select>
                 </label>
 
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-stone-700">Quantidade recebida</span>
+                    <input
+                      required
+                      min="0.001"
+                      step="0.001"
+                      type="number"
+                      value={entradaForm.quantidade}
+                      onChange={(event) => onChangeEntrada('quantidade', event.target.value)}
+                      className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-stone-700">Custo unitario</span>
+                    <input
+                      min="0"
+                      step="0.01"
+                      type="number"
+                      value={entradaForm.custo_unitario}
+                      onChange={(event) => onChangeEntrada('custo_unitario', event.target.value)}
+                      className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
+                    />
+                  </label>
+                </div>
+
                 <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-stone-700">Estoque inicial</span>
+                  <span className="mb-2 block text-sm font-bold text-stone-700">Documento</span>
                   <input
-                    min="0"
-                    step="0.001"
-                    type="number"
-                    value={form.quantidade_inicial}
-                    onChange={(event) => onChange('quantidade_inicial', event.target.value)}
+                    type="text"
+                    value={entradaForm.documento}
+                    onChange={(event) => onChangeEntrada('documento', event.target.value)}
                     className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
                   />
                 </label>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-stone-700">Alerta minimo</span>
-                  <input
-                    min="0"
-                    step="0.001"
-                    type="number"
-                    value={form.alerta_minimo}
-                    onChange={(event) => onChange('alerta_minimo', event.target.value)}
-                    className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-stone-700">Custo de referencia</span>
-                  <input
-                    min="0"
-                    step="0.01"
-                    type="number"
-                    value={form.custo_medio}
-                    onChange={(event) => onChange('custo_medio', event.target.value)}
-                    className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={saving}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-5 py-4 text-base font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-stone-300"
-            >
-              {saving ? <Loader2 className="animate-spin" size={20} /> : <PackagePlus size={20} />}
-              Cadastrar insumo
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={submittingEntrada}
+                className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-5 py-4 text-base font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-stone-300"
+              >
+                {submittingEntrada ? <Loader2 className="animate-spin" size={20} /> : <PackageCheck size={20} />}
+                Registrar entrada
+              </button>
+            </form>
+          </div>
 
           <section className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-[0_18px_60px_rgba(120,53,15,0.1)] backdrop-blur">
             <div className="mb-5 flex items-center justify-between gap-3">
@@ -206,8 +325,9 @@ function Insumos() {
               </div>
               <button
                 onClick={carregarInsumos}
-                className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100"
+                className="inline-flex items-center gap-2 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100"
               >
+                <RefreshCcw size={16} />
                 Recarregar
               </button>
             </div>

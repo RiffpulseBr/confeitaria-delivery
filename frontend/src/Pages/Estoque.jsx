@@ -1,14 +1,7 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Loader2, Minus, PackageCheck, PackageSearch, Plus, RefreshCcw, Trash2, Warehouse } from 'lucide-react'
+import { AlertTriangle, Loader2, PackageSearch, RefreshCcw, Warehouse } from 'lucide-react'
 
 import { apiFetch, currency } from '../lib/api'
-
-const ENTRADA_INICIAL = {
-  insumo_id: '',
-  quantidade: '',
-  custo_unitario: '',
-  documento: '',
-}
 
 function toneByLevel(atual, alerta) {
   if (alerta > 0 && atual <= alerta / 2) {
@@ -29,26 +22,10 @@ function toneByLevel(atual, alerta) {
   }
 }
 
-function solicitarQuantidade(rotulo, unidade = 'un') {
-  const resposta = window.prompt(`Informe a quantidade para ${rotulo} (${unidade}).`, '1')
-  if (resposta === null) return null
-
-  const quantidade = Number(String(resposta).replace(',', '.'))
-  if (!Number.isFinite(quantidade) || quantidade <= 0) {
-    window.alert('Informe uma quantidade valida maior que zero.')
-    return null
-  }
-
-  return quantidade
-}
-
 function Estoque() {
   const [insumos, setInsumos] = useState([])
   const [produtosProntos, setProdutosProntos] = useState([])
-  const [entradaForm, setEntradaForm] = useState(ENTRADA_INICIAL)
   const [loading, setLoading] = useState(true)
-  const [submittingEntrada, setSubmittingEntrada] = useState(false)
-  const [actionKey, setActionKey] = useState('')
   const [mensagem, setMensagem] = useState('')
 
   const carregarEstoque = async () => {
@@ -73,123 +50,6 @@ function Estoque() {
     carregarEstoque()
   }, [])
 
-  const onChangeEntrada = (field, value) => {
-    setEntradaForm((current) => ({ ...current, [field]: value }))
-  }
-
-  const registrarEntrada = async (event) => {
-    event.preventDefault()
-    setSubmittingEntrada(true)
-    setMensagem('')
-
-    try {
-      await apiFetch('/api/estoque/entrada', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          insumo_id: entradaForm.insumo_id,
-          quantidade: Number(entradaForm.quantidade),
-          custo_unitario: entradaForm.custo_unitario ? Number(entradaForm.custo_unitario) : null,
-          documento: entradaForm.documento || null,
-        }),
-      })
-
-      setEntradaForm(ENTRADA_INICIAL)
-      setMensagem('Entrada de mercadoria registrada com sucesso.')
-      await carregarEstoque()
-    } catch (error) {
-      setMensagem(error.message)
-    } finally {
-      setSubmittingEntrada(false)
-    }
-  }
-
-  const ajustarInsumo = async (item, operacao) => {
-    const quantidade = solicitarQuantidade(
-      operacao === 'entrada' ? `adicionar em ${item.nome}` : `retirar de ${item.nome}`,
-      item.unidade_medida || 'un',
-    )
-    if (!quantidade) return
-
-    setActionKey(`insumo:${item.id}:${operacao}`)
-    setMensagem('')
-
-    try {
-      await apiFetch(`/api/estoque/insumos/${item.id}/ajustar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantidade, operacao }),
-      })
-      setMensagem(`Estoque de ${item.nome} atualizado com sucesso.`)
-      await carregarEstoque()
-    } catch (error) {
-      setMensagem(error.message)
-    } finally {
-      setActionKey('')
-    }
-  }
-
-  const excluirInsumo = async (item) => {
-    const confirmado = window.confirm(`Remover ${item.nome} da area de estoque?`)
-    if (!confirmado) return
-
-    setActionKey(`insumo:${item.id}:delete`)
-    setMensagem('')
-
-    try {
-      await apiFetch(`/api/estoque/insumos/${item.id}`, { method: 'DELETE' })
-      setMensagem(`${item.nome} removido da area de estoque.`)
-      await carregarEstoque()
-    } catch (error) {
-      setMensagem(error.message)
-    } finally {
-      setActionKey('')
-    }
-  }
-
-  const ajustarProdutoPronto = async (item, operacao) => {
-    const quantidade = solicitarQuantidade(
-      operacao === 'entrada' ? `adicionar em ${item.produto_nome}` : `retirar de ${item.produto_nome}`,
-      'un',
-    )
-    if (!quantidade) return
-
-    setActionKey(`produto:${item.produto_id}:${operacao}`)
-    setMensagem('')
-
-    try {
-      await apiFetch(`/api/estoque/produtos/${item.produto_id}/ajustar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantidade, operacao }),
-      })
-      setMensagem(`Estoque de ${item.produto_nome} atualizado com sucesso.`)
-      await carregarEstoque()
-    } catch (error) {
-      setMensagem(error.message)
-    } finally {
-      setActionKey('')
-    }
-  }
-
-  const excluirProdutoPronto = async (item) => {
-    const confirmado = window.confirm(`Excluir ${item.produto_nome} do estoque de produtos prontos?`)
-    if (!confirmado) return
-
-    setActionKey(`produto:${item.produto_id}:delete`)
-    setMensagem('')
-
-    try {
-      await apiFetch(`/api/estoque/produtos/${item.produto_id}`, { method: 'DELETE' })
-      setMensagem(`${item.produto_nome} removido do estoque de produtos prontos.`)
-      await carregarEstoque()
-    } catch (error) {
-      setMensagem(error.message)
-    } finally {
-      setActionKey('')
-    }
-  }
-
   return (
     <div className="h-full overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(253,230,138,0.28),_transparent_32%),linear-gradient(135deg,_#fff7ed,_#fffbeb_45%,_#fefce8)] p-8">
       <div className="mx-auto max-w-7xl">
@@ -198,11 +58,11 @@ function Estoque() {
             <div className="max-w-3xl">
               <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-amber-100 px-4 py-2 text-xs font-bold uppercase tracking-[0.3em] text-amber-700">
                 <Warehouse size={14} />
-                Operacao de estoque
+                Visao de estoque
               </p>
-              <h1 className="font-serif text-4xl text-stone-900 md:text-5xl">Insumos e produtos prontos</h1>
+              <h1 className="font-serif text-4xl text-stone-900 md:text-5xl">Saldos atuais</h1>
               <p className="mt-3 max-w-2xl text-base leading-7 text-stone-600">
-                Compre insumos, acompanhe o saldo e use os botoes de mais, menos e excluir para ajustes rapidos.
+                Consulte os insumos disponiveis e os produtos prontos para venda.
               </p>
             </div>
 
@@ -222,88 +82,6 @@ function Estoque() {
           </div>
         )}
 
-        <div className="mb-8 max-w-3xl">
-          <form
-            onSubmit={registrarEntrada}
-            className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-[0_18px_60px_rgba(120,53,15,0.1)] backdrop-blur"
-          >
-            <div className="mb-5 flex items-center gap-3">
-              <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-700">
-                <PackageSearch size={22} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-stone-900">Entrada de mercadoria</h2>
-                <p className="text-sm text-stone-500">Compra e reposicao dos insumos da cozinha.</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <label className="block">
-                <span className="mb-2 block text-sm font-bold text-stone-700">Insumo</span>
-                <select
-                  required
-                  value={entradaForm.insumo_id}
-                  onChange={(event) => onChangeEntrada('insumo_id', event.target.value)}
-                  className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
-                >
-                  <option value="">Selecione um insumo</option>
-                  {insumos.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.nome} | Atual: {item.quantidade_atual} {item.unidade_medida || 'un'}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-stone-700">Quantidade recebida</span>
-                  <input
-                    required
-                    min="0.001"
-                    step="0.001"
-                    type="number"
-                    value={entradaForm.quantidade}
-                    onChange={(event) => onChangeEntrada('quantidade', event.target.value)}
-                    className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-stone-700">Custo unitario</span>
-                  <input
-                    min="0"
-                    step="0.01"
-                    type="number"
-                    value={entradaForm.custo_unitario}
-                    onChange={(event) => onChangeEntrada('custo_unitario', event.target.value)}
-                    className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
-                  />
-                </label>
-              </div>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-bold text-stone-700">Documento</span>
-                <input
-                  type="text"
-                  value={entradaForm.documento}
-                  onChange={(event) => onChangeEntrada('documento', event.target.value)}
-                  className="w-full rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-stone-800"
-                />
-              </label>
-            </div>
-
-            <button
-              type="submit"
-              disabled={submittingEntrada}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-5 py-4 text-base font-bold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-stone-300"
-            >
-              {submittingEntrada ? <Loader2 className="animate-spin" size={20} /> : <PackageCheck size={20} />}
-              Registrar entrada
-            </button>
-          </form>
-        </div>
-
         {loading ? (
           <div className="flex min-h-[360px] items-center justify-center">
             <Loader2 className="h-12 w-12 animate-spin text-amber-500" />
@@ -317,7 +95,7 @@ function Estoque() {
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-stone-900">Estoque de insumos</h2>
-                  <p className="text-sm text-stone-500">Use os atalhos para entradas, saidas e exclusao rapida.</p>
+                  <p className="text-sm text-stone-500">Materia-prima disponivel para producao.</p>
                 </div>
               </div>
 
@@ -349,36 +127,6 @@ function Estoque() {
                             {tone.label}
                           </span>
                         </div>
-
-                        <div className="mt-5 flex flex-wrap gap-3">
-                          <button
-                            type="button"
-                            onClick={() => ajustarInsumo(item, 'entrada')}
-                            disabled={actionKey === `insumo:${item.id}:entrada`}
-                            className="inline-flex items-center gap-2 rounded-2xl bg-emerald-100 px-4 py-3 text-sm font-bold text-emerald-700 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
-                          >
-                            {actionKey === `insumo:${item.id}:entrada` ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-                            Mais
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => ajustarInsumo(item, 'saida')}
-                            disabled={actionKey === `insumo:${item.id}:saida`}
-                            className="inline-flex items-center gap-2 rounded-2xl bg-amber-100 px-4 py-3 text-sm font-bold text-amber-700 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
-                          >
-                            {actionKey === `insumo:${item.id}:saida` ? <Loader2 className="animate-spin" size={18} /> : <Minus size={18} />}
-                            Menos
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => excluirInsumo(item)}
-                            disabled={actionKey === `insumo:${item.id}:delete`}
-                            className="inline-flex items-center gap-2 rounded-2xl bg-red-100 px-4 py-3 text-sm font-bold text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
-                          >
-                            {actionKey === `insumo:${item.id}:delete` ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
-                            Excluir
-                          </button>
-                        </div>
                       </div>
                     )
                   })
@@ -393,7 +141,7 @@ function Estoque() {
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-stone-900">Produtos prontos</h2>
-                  <p className="text-sm text-stone-500">Ajuste o saldo de venda com botoes rapidos e sem campos extras.</p>
+                  <p className="text-sm text-stone-500">Itens finalizados e disponiveis para venda.</p>
                 </div>
               </div>
 
@@ -430,36 +178,6 @@ function Estoque() {
                             Produzir reposicao
                           </div>
                         )}
-
-                        <div className="mt-5 flex flex-wrap gap-3">
-                          <button
-                            type="button"
-                            onClick={() => ajustarProdutoPronto(item, 'entrada')}
-                            disabled={actionKey === `produto:${item.produto_id}:entrada`}
-                            className="inline-flex items-center gap-2 rounded-2xl bg-emerald-100 px-4 py-3 text-sm font-bold text-emerald-700 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
-                          >
-                            {actionKey === `produto:${item.produto_id}:entrada` ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-                            Mais
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => ajustarProdutoPronto(item, 'saida')}
-                            disabled={actionKey === `produto:${item.produto_id}:saida`}
-                            className="inline-flex items-center gap-2 rounded-2xl bg-amber-100 px-4 py-3 text-sm font-bold text-amber-700 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
-                          >
-                            {actionKey === `produto:${item.produto_id}:saida` ? <Loader2 className="animate-spin" size={18} /> : <Minus size={18} />}
-                            Menos
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => excluirProdutoPronto(item)}
-                            disabled={actionKey === `produto:${item.produto_id}:delete`}
-                            className="inline-flex items-center gap-2 rounded-2xl bg-red-100 px-4 py-3 text-sm font-bold text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400"
-                          >
-                            {actionKey === `produto:${item.produto_id}:delete` ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
-                            Excluir
-                          </button>
-                        </div>
                       </div>
                     )
                   })
