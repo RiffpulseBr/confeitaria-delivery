@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AlertTriangle, Loader2, Minus, PackageCheck, PackageSearch, Plus, RefreshCcw, Trash2, Warehouse } from 'lucide-react'
 
 import { apiFetch, currency } from '../lib/api'
@@ -8,12 +8,6 @@ const ENTRADA_INICIAL = {
   quantidade: '',
   custo_unitario: '',
   documento: '',
-}
-
-const PRODUTO_PRONTO_INICIAL = {
-  produto_id: '',
-  quantidade: '',
-  alerta_minimo: '',
 }
 
 function toneByLevel(atual, alerta) {
@@ -51,32 +45,22 @@ function solicitarQuantidade(rotulo, unidade = 'un') {
 function Estoque() {
   const [insumos, setInsumos] = useState([])
   const [produtosProntos, setProdutosProntos] = useState([])
-  const [produtos, setProdutos] = useState([])
   const [entradaForm, setEntradaForm] = useState(ENTRADA_INICIAL)
-  const [produtoProntoForm, setProdutoProntoForm] = useState(PRODUTO_PRONTO_INICIAL)
   const [loading, setLoading] = useState(true)
   const [submittingEntrada, setSubmittingEntrada] = useState(false)
-  const [submittingProdutoPronto, setSubmittingProdutoPronto] = useState(false)
   const [actionKey, setActionKey] = useState('')
   const [mensagem, setMensagem] = useState('')
-
-  const produtosSemEstoque = useMemo(() => {
-    const idsEmEstoque = new Set(produtosProntos.map((item) => item.produto_id))
-    return produtos.filter((produto) => !idsEmEstoque.has(produto.id))
-  }, [produtos, produtosProntos])
 
   const carregarEstoque = async () => {
     setLoading(true)
     try {
-      const [insumosData, produtosProntosData, produtosData] = await Promise.all([
+      const [insumosData, produtosProntosData] = await Promise.all([
         apiFetch('/api/estoque/insumos'),
         apiFetch('/api/estoque/produtos'),
-        apiFetch('/api/produtos?ativos_apenas=false'),
       ])
 
       setInsumos(Array.isArray(insumosData) ? insumosData : [])
       setProdutosProntos(Array.isArray(produtosProntosData) ? produtosProntosData : [])
-      setProdutos(Array.isArray(produtosData) ? produtosData.filter((item) => item.ativo) : [])
       setMensagem('')
     } catch (error) {
       setMensagem(error.message)
@@ -91,10 +75,6 @@ function Estoque() {
 
   const onChangeEntrada = (field, value) => {
     setEntradaForm((current) => ({ ...current, [field]: value }))
-  }
-
-  const onChangeProdutoPronto = (field, value) => {
-    setProdutoProntoForm((current) => ({ ...current, [field]: value }))
   }
 
   const registrarEntrada = async (event) => {
@@ -121,33 +101,6 @@ function Estoque() {
       setMensagem(error.message)
     } finally {
       setSubmittingEntrada(false)
-    }
-  }
-
-  const adicionarProdutoPronto = async (event) => {
-    event.preventDefault()
-    setSubmittingProdutoPronto(true)
-    setMensagem('')
-
-    try {
-      await apiFetch('/api/estoque/produtos/movimentar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          produto_id: produtoProntoForm.produto_id,
-          quantidade: Number(produtoProntoForm.quantidade),
-          tipo_movimentacao: 'entrada',
-          alerta_minimo: produtoProntoForm.alerta_minimo ? Number(produtoProntoForm.alerta_minimo) : null,
-        }),
-      })
-
-      setProdutoProntoForm(PRODUTO_PRONTO_INICIAL)
-      setMensagem('Produto pronto adicionado ao estoque com sucesso.')
-      await carregarEstoque()
-    } catch (error) {
-      setMensagem(error.message)
-    } finally {
-      setSubmittingProdutoPronto(false)
     }
   }
 
@@ -269,7 +222,7 @@ function Estoque() {
           </div>
         )}
 
-        <div className="mb-8 grid grid-cols-1 gap-8 xl:grid-cols-2">
+        <div className="mb-8 max-w-3xl">
           <form
             onSubmit={registrarEntrada}
             className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-[0_18px_60px_rgba(120,53,15,0.1)] backdrop-blur"
@@ -347,76 +300,6 @@ function Estoque() {
             >
               {submittingEntrada ? <Loader2 className="animate-spin" size={20} /> : <PackageCheck size={20} />}
               Registrar entrada
-            </button>
-          </form>
-
-          <form
-            onSubmit={adicionarProdutoPronto}
-            className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-[0_18px_60px_rgba(120,53,15,0.1)] backdrop-blur"
-          >
-            <div className="mb-5 flex items-center gap-3">
-              <div className="rounded-2xl bg-rose-100 p-3 text-rose-700">
-                <Warehouse size={22} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-stone-900">Adicionar produto pronto</h2>
-                <p className="text-sm text-stone-500">Use apenas quando precisar iniciar um item manualmente no estoque pronto.</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <label className="block">
-                <span className="mb-2 block text-sm font-bold text-stone-700">Produto</span>
-                <select
-                  required
-                  value={produtoProntoForm.produto_id}
-                  onChange={(event) => onChangeProdutoPronto('produto_id', event.target.value)}
-                  className="w-full rounded-2xl border border-rose-100 bg-rose-50/60 px-4 py-3 text-stone-800"
-                >
-                  <option value="">Selecione um produto</option>
-                  {produtosSemEstoque.map((produto) => (
-                    <option key={produto.id} value={produto.id}>
-                      {produto.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-stone-700">Quantidade inicial</span>
-                  <input
-                    required
-                    min="0.001"
-                    step="0.001"
-                    type="number"
-                    value={produtoProntoForm.quantidade}
-                    onChange={(event) => onChangeProdutoPronto('quantidade', event.target.value)}
-                    className="w-full rounded-2xl border border-rose-100 bg-rose-50/60 px-4 py-3 text-stone-800"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-stone-700">Alerta minimo</span>
-                  <input
-                    min="0"
-                    step="0.001"
-                    type="number"
-                    value={produtoProntoForm.alerta_minimo}
-                    onChange={(event) => onChangeProdutoPronto('alerta_minimo', event.target.value)}
-                    className="w-full rounded-2xl border border-rose-100 bg-rose-50/60 px-4 py-3 text-stone-800"
-                  />
-                </label>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={submittingProdutoPronto}
-              className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-5 py-4 text-base font-bold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-stone-300"
-            >
-              {submittingProdutoPronto ? <Loader2 className="animate-spin" size={20} /> : <Plus size={20} />}
-              Adicionar ao estoque pronto
             </button>
           </form>
         </div>
