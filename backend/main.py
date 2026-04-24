@@ -22,7 +22,9 @@ from schemas import (
     EstoqueProdutoCreate,
     EstoqueProdutoEntradaCreate,
     EstoqueProdutoMovimentoCreate,
+    EstoqueProdutoUpdate,
     InsumoCreate,
+    InsumoUpdate,
     IfoodAckRequest,
     IfoodCloseStoreRequest,
     IfoodItemMappingCreate,
@@ -1032,6 +1034,51 @@ def ajustar_estoque_produto(produto_id: str, payload: EstoqueAjusteCreate) -> di
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.patch("/api/estoque/produtos/{produto_id}")
+def editar_estoque_produto(produto_id: str, payload: EstoqueProdutoUpdate) -> dict[str, Any]:
+    try:
+        produto_payload: dict[str, Any] = {}
+        if payload.nome is not None:
+            produto_payload["nome"] = payload.nome.strip()
+        if payload.preco is not None:
+            produto_payload["preco"] = payload.preco
+        if payload.ativo is not None:
+            produto_payload["ativo"] = payload.ativo
+
+        estoque_payload: dict[str, Any] = {}
+        if payload.alerta_minimo is not None:
+            estoque_payload["alerta_minimo"] = payload.alerta_minimo
+            estoque_payload["updated_at"] = _utc_now_iso()
+
+        if not produto_payload and not estoque_payload:
+            raise HTTPException(status_code=400, detail="Informe pelo menos um campo para atualizar o produto pronto.")
+
+        produto = None
+        estoque_produto = None
+        if produto_payload:
+            produto_response = _get_supabase_client().table("produtos").update(produto_payload).eq("id", produto_id).execute()
+            produto = produto_response.data[0] if produto_response.data else None
+
+        if estoque_payload:
+            estoque_response = (
+                _get_supabase_client().table("estoque_produtos")
+                .update(estoque_payload)
+                .eq("produto_id", produto_id)
+                .execute()
+            )
+            estoque_produto = estoque_response.data[0] if estoque_response.data else None
+
+        return {
+            "mensagem": "Produto pronto atualizado com sucesso.",
+            "produto": produto,
+            "estoque_produto": estoque_produto,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.delete("/api/estoque/produtos/{produto_id}")
 def excluir_estoque_produto(produto_id: str) -> dict[str, Any]:
     try:
@@ -1208,6 +1255,40 @@ def ajustar_estoque_insumo(insumo_id: str, payload: EstoqueAjusteCreate) -> dict
         insumo = _ajustar_insumo(insumo_id=insumo_id, quantidade=payload.quantidade, operacao=payload.operacao)
         return {
             "mensagem": "Ajuste de insumo realizado com sucesso.",
+            "insumo": insumo,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.patch("/api/estoque/insumos/{insumo_id}")
+def editar_estoque_insumo(insumo_id: str, payload: InsumoUpdate) -> dict[str, Any]:
+    try:
+        update_payload: dict[str, Any] = {"updated_at": _utc_now_iso(), "atualizado_em": _utc_now_iso()}
+        if payload.nome is not None:
+            update_payload["nome"] = payload.nome.strip()
+        if payload.unidade_medida is not None:
+            update_payload["unidade_medida"] = payload.unidade_medida.strip()
+        if payload.alerta_minimo is not None:
+            update_payload["alerta_minimo"] = payload.alerta_minimo
+        if payload.ativo is not None:
+            update_payload["ativo"] = payload.ativo
+
+        if len(update_payload) == 2:
+            raise HTTPException(status_code=400, detail="Informe pelo menos um campo para atualizar o insumo.")
+
+        response = _get_supabase_client().table("insumos").update(update_payload).eq("id", insumo_id).execute()
+        insumo = response.data[0] if response.data else None
+        if not insumo:
+            consulta = _get_supabase_client().table("insumos").select("*").eq("id", insumo_id).limit(1).execute()
+            insumo = consulta.data[0] if consulta.data else None
+        if not insumo:
+            raise HTTPException(status_code=404, detail="Insumo nao encontrado.")
+
+        return {
+            "mensagem": "Insumo atualizado com sucesso.",
             "insumo": insumo,
         }
     except HTTPException:

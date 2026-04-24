@@ -80,10 +80,24 @@ class InsumoCreate(BaseModel):
     ativo: bool = True
 
 
+class InsumoUpdate(BaseModel):
+    nome: Optional[str] = Field(default=None, min_length=2)
+    unidade_medida: Optional[str] = Field(default=None, min_length=1, max_length=20)
+    alerta_minimo: Optional[float] = Field(default=None, ge=0)
+    ativo: Optional[bool] = None
+
+
 class EstoqueProdutoCreate(BaseModel):
     produto_id: str
     quantidade_inicial: float = Field(default=0, ge=0)
     alerta_minimo: float = Field(default=0, ge=0)
+
+
+class EstoqueProdutoUpdate(BaseModel):
+    nome: Optional[str] = Field(default=None, min_length=2)
+    preco: Optional[float] = Field(default=None, ge=0)
+    alerta_minimo: Optional[float] = Field(default=None, ge=0)
+    ativo: Optional[bool] = None
 
 
 class EstoqueProdutoEntradaCreate(BaseModel):
