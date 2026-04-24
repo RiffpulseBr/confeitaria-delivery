@@ -17,6 +17,7 @@ from supabase import Client, create_client
 from routers.pedidos import router as pedidos_router
 from routers.producao import router as producao_router
 from schemas import (
+    EstoqueAjusteCreate,
     EstoqueEntradaCreate,
     EstoqueProdutoCreate,
     EstoqueProdutoEntradaCreate,
@@ -502,6 +503,51 @@ def _update_estoque_quantity(entrada: EstoqueEntradaCreate) -> dict[str, Any]:
     return response.data[0] if response.data else {**item, "quantidade_atual": nova_quantidade}
 
 
+def _ajustar_insumo(
+    insumo_id: str,
+    quantidade: float,
+    operacao: str,
+) -> dict[str, Any]:
+    consulta = _get_supabase_client().table("insumos").select("*").eq("id", insumo_id).limit(1).execute()
+    item = consulta.data[0] if consulta.data else None
+    if not item:
+        raise HTTPException(status_code=404, detail="Insumo nao encontrado.")
+
+    operacao_normalizada = (operacao or "entrada").strip().lower()
+    if operacao_normalizada not in {"entrada", "saida"}:
+        raise HTTPException(status_code=400, detail="operacao deve ser 'entrada' ou 'saida'.")
+
+    delta = abs(quantidade)
+    if operacao_normalizada == "saida":
+        delta *= -1
+
+    quantidade_atual = float(item.get("quantidade_atual") or 0)
+    nova_quantidade = quantidade_atual + delta
+    if nova_quantidade < 0:
+        raise HTTPException(status_code=400, detail="A movimentacao deixaria o estoque de insumos negativo.")
+
+    response = (
+        _get_supabase_client().table("insumos")
+        .update({"quantidade_atual": nova_quantidade, "updated_at": _utc_now_iso(), "atualizado_em": _utc_now_iso()})
+        .eq("id", insumo_id)
+        .execute()
+    )
+
+    _registrar_movimentacao_estoque(
+        {
+            "insumo_id": insumo_id,
+            "tipo_movimentacao": "entrada_manual" if operacao_normalizada == "entrada" else "saida_manual",
+            "estoque_alvo": "insumo",
+            "quantidade": abs(quantidade),
+            "origem_tipo": "ajuste_manual",
+            "origem_id": insumo_id,
+            "created_at": _utc_now_iso(),
+        }
+    )
+
+    return response.data[0] if response.data else {**item, "quantidade_atual": nova_quantidade}
+
+
 def _merchant_path(merchant_id: str, suffix: str = "") -> str:
     base = f"/merchant/v1.0/merchants/{merchant_id}"
     return f"{base}{suffix}"
@@ -561,7 +607,7 @@ def _last_cost_by_insumo() -> dict[str, Any]:
 
 def _listar_insumos_formatados() -> list[dict[str, Any]]:
     custo_por_insumo = _last_cost_by_insumo()
-    response = _get_supabase_client().table("insumos").select("*").order("nome").execute()
+    response = _get_supabase_client().table("insumos").select("*").eq("ativo", True).order("nome").execute()
     itens = response.data or []
 
     for item in itens:
@@ -632,6 +678,15 @@ def _movimentar_estoque_produto(
     if quantidade < 0:
         raise HTTPException(status_code=400, detail="Nao e possivel iniciar o estoque de produtos prontos com saldo negativo.")
     return _upsert_estoque_produto(data)
+
+
+def _excluir_estoque_produto(produto_id: str) -> None:
+    consulta = _get_supabase_client().table("estoque_produtos").select("id").eq("produto_id", produto_id).limit(1).execute()
+    item = consulta.data[0] if consulta.data else None
+    if not item:
+        raise HTTPException(status_code=404, detail="Produto pronto nao encontrado no estoque.")
+
+    _get_supabase_client().table("estoque_produtos").delete().eq("id", item["id"]).execute()
 
 
 def _listar_pedidos(status_filter: Optional[str] = None) -> list[dict[str, Any]]:
@@ -923,6 +978,55 @@ def listar_estoque_produtos() -> list[dict[str, Any]]:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/estoque/produtos/{produto_id}/ajustar")
+def ajustar_estoque_produto(produto_id: str, payload: EstoqueAjusteCreate) -> dict[str, Any]:
+    try:
+        operacao = (payload.operacao or "entrada").strip().lower()
+        if operacao not in {"entrada", "saida"}:
+            raise HTTPException(status_code=400, detail="operacao deve ser 'entrada' ou 'saida'.")
+
+        quantidade = abs(payload.quantidade)
+        if operacao == "saida":
+            quantidade *= -1
+
+        estoque_produto = _movimentar_estoque_produto(
+            produto_id=produto_id,
+            quantidade=quantidade,
+        )
+        _registrar_movimentacao_estoque(
+            {
+                "produto_id": produto_id,
+                "tipo_movimentacao": "entrada_manual" if operacao == "entrada" else "saida_manual",
+                "estoque_alvo": "produto_pronto",
+                "quantidade": abs(payload.quantidade),
+                "origem_tipo": "ajuste_manual",
+                "origem_id": produto_id,
+                "created_at": _utc_now_iso(),
+            }
+        )
+        return {
+            "mensagem": "Ajuste de produto pronto realizado com sucesso.",
+            "estoque_produto": estoque_produto,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.delete("/api/estoque/produtos/{produto_id}")
+def excluir_estoque_produto(produto_id: str) -> dict[str, Any]:
+    try:
+        _excluir_estoque_produto(produto_id)
+        return {
+            "mensagem": "Produto pronto removido do estoque com sucesso.",
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/estoque/produtos", status_code=status.HTTP_201_CREATED)
 def cadastrar_produto_no_estoque(payload: EstoqueProdutoCreate) -> dict[str, Any]:
     try:
@@ -1076,6 +1180,40 @@ def salvar_receita(payload: ReceitaCreate) -> dict[str, Any]:
 def listar_insumos_estoque() -> list[dict[str, Any]]:
     try:
         return _listar_insumos_formatados()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/estoque/insumos/{insumo_id}/ajustar")
+def ajustar_estoque_insumo(insumo_id: str, payload: EstoqueAjusteCreate) -> dict[str, Any]:
+    try:
+        insumo = _ajustar_insumo(insumo_id=insumo_id, quantidade=payload.quantidade, operacao=payload.operacao)
+        return {
+            "mensagem": "Ajuste de insumo realizado com sucesso.",
+            "insumo": insumo,
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.delete("/api/estoque/insumos/{insumo_id}")
+def excluir_insumo_estoque(insumo_id: str) -> dict[str, Any]:
+    try:
+        consulta = _get_supabase_client().table("insumos").select("id").eq("id", insumo_id).limit(1).execute()
+        item = consulta.data[0] if consulta.data else None
+        if not item:
+            raise HTTPException(status_code=404, detail="Insumo nao encontrado.")
+
+        _get_supabase_client().table("insumos").update(
+            {"ativo": False, "updated_at": _utc_now_iso(), "atualizado_em": _utc_now_iso()}
+        ).eq("id", insumo_id).execute()
+        return {
+            "mensagem": "Insumo removido da area de estoque com sucesso.",
+        }
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

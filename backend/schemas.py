@@ -50,6 +50,11 @@ class EstoqueEntradaCreate(BaseModel):
     documento: Optional[str] = None
 
 
+class EstoqueAjusteCreate(BaseModel):
+    quantidade: float = Field(gt=0)
+    operacao: str = Field(default="entrada")
+
+
 class IfoodCloseStoreRequest(BaseModel):
     duration_minutes: int = Field(default=60, ge=5, le=1440)
     description: str = "Pausa temporaria via painel administrativo"
