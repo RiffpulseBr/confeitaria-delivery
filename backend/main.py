@@ -45,6 +45,7 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 IFOOD_BASE_URL = os.getenv("IFOOD_BASE_URL", "https://merchant-api.ifood.com.br")
 IFOOD_CLIENT_ID = os.getenv("IFOOD_CLIENT_ID")
 IFOOD_CLIENT_SECRET = os.getenv("IFOOD_CLIENT_SECRET")
+IFOOD_WEBHOOK_SECRET = os.getenv("IFOOD_WEBHOOK_SECRET")
 TOKEN_RENEWAL_MARGIN_SECONDS = 60
 
 supabase_client: Optional[Client] = None
@@ -208,20 +209,23 @@ def _ifood_request(method: str, path: str, **kwargs: Any) -> httpx.Response:
 
 
 def _safe_compare_signature(raw_body: bytes, received_signature: Optional[str]) -> None:
-    if not IFOOD_CLIENT_SECRET:
+    webhook_secrets = [secret for secret in (IFOOD_WEBHOOK_SECRET, IFOOD_CLIENT_SECRET) if secret]
+    if not webhook_secrets:
         return
 
     if not received_signature:
         raise HTTPException(status_code=401, detail="Header X-IFood-Signature ausente.")
 
-    expected_signature = hmac.new(
-        IFOOD_CLIENT_SECRET.encode("utf-8"),
-        raw_body,
-        hashlib.sha256,
-    ).hexdigest()
+    for secret in webhook_secrets:
+        expected_signature = hmac.new(
+            secret.encode("utf-8"),
+            raw_body,
+            hashlib.sha256,
+        ).hexdigest()
+        if hmac.compare_digest(expected_signature, received_signature):
+            return
 
-    if not hmac.compare_digest(expected_signature, received_signature):
-        raise HTTPException(status_code=401, detail="Assinatura do webhook iFood invalida.")
+    raise HTTPException(status_code=401, detail="Assinatura do webhook iFood invalida.")
 
 
 def _fetch_table_rows(table: str, filters: Optional[dict[str, Any]] = None) -> list[dict[str, Any]]:
