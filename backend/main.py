@@ -1428,6 +1428,19 @@ async def receber_evento_ifood(request: Request) -> dict[str, Any]:
         }
 
 
+@app.api_route("/api/ifood/webhook-test", methods=["GET", "POST"], status_code=status.HTTP_202_ACCEPTED)
+async def testar_webhook_ifood(request: Request) -> dict[str, Any]:
+    raw_body = await request.body()
+    return {
+        "received": True,
+        "method": request.method,
+        "content_type": request.headers.get("content-type"),
+        "has_ifood_signature": bool(request.headers.get("X-IFood-Signature")),
+        "body_size": len(raw_body),
+        "detail": "Endpoint temporario para testar alcance do webhook sem validar assinatura.",
+    }
+
+
 @app.post("/api/ifood/events/acknowledgment")
 def confirmar_recebimento_ifood(payload: IfoodAckRequest) -> dict[str, Any]:
     event_ids = payload.event_ids or _get_pending_ifood_event_ids()
