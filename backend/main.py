@@ -282,12 +282,25 @@ def _resolve_product_mapping(merchant_id: Optional[str], item: dict[str, Any]) -
         return None
 
     try:
-        query = _get_supabase_client().table("ifood_item_mappings").select("*").eq("merchant_item_id", merchant_item_id)
-        if merchant_id:
-            query = query.eq("merchant_id", merchant_id)
-        response = query.limit(1).execute()
-        mappings = response.data or []
-        return mappings[0] if mappings else None
+        for mapping_key in (merchant_item_id, "*"):
+            query = _get_supabase_client().table("ifood_item_mappings").select("*").eq("merchant_item_id", mapping_key)
+            if merchant_id:
+                query = query.eq("merchant_id", merchant_id)
+            response = query.limit(1).execute()
+            mappings = response.data or []
+            if mappings:
+                if mapping_key == "*":
+                    _log_ifood_webhook(
+                        "mapeamento curinga aplicado",
+                        {
+                            "merchant_id": merchant_id,
+                            "item_name": item.get("name"),
+                            "merchant_item_id": merchant_item_id,
+                            "produto_id": mappings[0].get("produto_id"),
+                        },
+                    )
+                return mappings[0]
+        return None
     except Exception:
         return None
 
