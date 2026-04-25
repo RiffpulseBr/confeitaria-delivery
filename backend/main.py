@@ -415,6 +415,10 @@ def _sync_ifood_event(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _looks_like_ifood_order_event(payload: dict[str, Any]) -> bool:
+    return all(payload.get(field) for field in ("id", "code", "fullCode"))
+
+
 def _acknowledge_ifood_events(event_ids: list[str]) -> dict[str, Any]:
     unique_event_ids = list(dict.fromkeys([event_id for event_id in event_ids if event_id]))
     if not unique_event_ids:
@@ -1379,6 +1383,17 @@ async def receber_evento_ifood(request: Request) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Payload JSON invalido.") from exc
 
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload JSON precisa ser um objeto.")
+
+    if not _looks_like_ifood_order_event(payload):
+        return {
+            "received": True,
+            "processed": False,
+            "event_type": "presence_or_connection_test",
+            "detail": "Webhook iFood assinado recebido. Payload sem formato de pedido, tratado como teste/presenca.",
+        }
+
     try:
         event = IfoodWebhookEvent.model_validate(payload).model_dump()
     except Exception as exc:
@@ -1387,7 +1402,8 @@ async def receber_evento_ifood(request: Request) -> dict[str, Any]:
     try:
         sync_result = _sync_ifood_event(event)
         _record_ifood_event(event, "processed")
-        _acknowledge_single_event(event["id"])
+        if event.get("fullCode") == "PLACED":
+            _acknowledge_single_event(event["id"])
         return {
             "received": True,
             "event_id": event["id"],
