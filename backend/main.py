@@ -419,6 +419,13 @@ def _sync_ifood_event(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _log_ifood_webhook(message: str, payload: Optional[dict[str, Any]] = None) -> None:
+    suffix = ""
+    if payload:
+        suffix = " " + json.dumps(payload, ensure_ascii=False, default=str)
+    print(f"[IFOOD WEBHOOK] {message}{suffix}", flush=True)
+
+
 def _looks_like_ifood_order_event(payload: dict[str, Any]) -> bool:
     return all(payload.get(field) for field in ("id", "code", "fullCode"))
 
@@ -1353,6 +1360,21 @@ def listar_mapeamentos_ifood() -> list[dict[str, Any]]:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/api/ifood/event-logs")
+def listar_logs_eventos_ifood(limit: int = Query(default=20, ge=1, le=100)) -> list[dict[str, Any]]:
+    try:
+        response = (
+            _get_supabase_client().table("ifood_event_logs")
+            .select("*")
+            .order("received_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+        return response.data or []
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/ifood/item-mappings", status_code=status.HTTP_201_CREATED)
 def criar_mapeamento_ifood(payload: IfoodItemMappingCreate) -> dict[str, Any]:
     try:
@@ -1391,6 +1413,13 @@ async def receber_evento_ifood(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Payload JSON precisa ser um objeto.")
 
     if not _looks_like_ifood_order_event(payload):
+        _log_ifood_webhook(
+            "payload sem formato de pedido tratado como teste/presenca",
+            {
+                "keys": sorted(payload.keys()),
+                "body_size": len(raw_body),
+            },
+        )
         return {
             "received": True,
             "processed": False,
@@ -1403,8 +1432,26 @@ async def receber_evento_ifood(request: Request) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Evento iFood invalido: {exc}") from exc
 
+    _log_ifood_webhook(
+        "evento recebido",
+        {
+            "event_id": event.get("id"),
+            "fullCode": event.get("fullCode"),
+            "orderId": event.get("orderId"),
+            "merchantId": event.get("merchantId"),
+        },
+    )
+
     try:
         sync_result = _sync_ifood_event(event)
+        _log_ifood_webhook(
+            "evento processado",
+            {
+                "event_id": event.get("id"),
+                "fullCode": event.get("fullCode"),
+                "sync_result": sync_result,
+            },
+        )
         _record_ifood_event(event, "processed")
         if event.get("fullCode") == "PLACED":
             _acknowledge_single_event(event["id"])
@@ -1415,6 +1462,15 @@ async def receber_evento_ifood(request: Request) -> dict[str, Any]:
         }
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, str) else json.dumps(exc.detail, ensure_ascii=False)
+        _log_ifood_webhook(
+            "erro ao processar evento",
+            {
+                "event_id": event.get("id"),
+                "fullCode": event.get("fullCode"),
+                "orderId": event.get("orderId"),
+                "detail": exc.detail,
+            },
+        )
         _record_ifood_event(event, "error", error_message=detail)
         return {
             "received": True,
@@ -1423,6 +1479,15 @@ async def receber_evento_ifood(request: Request) -> dict[str, Any]:
             "detail": exc.detail,
         }
     except Exception as exc:
+        _log_ifood_webhook(
+            "erro inesperado ao processar evento",
+            {
+                "event_id": event.get("id"),
+                "fullCode": event.get("fullCode"),
+                "orderId": event.get("orderId"),
+                "detail": str(exc),
+            },
+        )
         _record_ifood_event(event, "error", error_message=str(exc))
         return {
             "received": True,
