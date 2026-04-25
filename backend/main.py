@@ -46,6 +46,7 @@ IFOOD_BASE_URL = os.getenv("IFOOD_BASE_URL", "https://merchant-api.ifood.com.br"
 IFOOD_CLIENT_ID = os.getenv("IFOOD_CLIENT_ID")
 IFOOD_CLIENT_SECRET = os.getenv("IFOOD_CLIENT_SECRET")
 IFOOD_WEBHOOK_SECRET = os.getenv("IFOOD_WEBHOOK_SECRET")
+IFOOD_TEST_PRODUCT_ID = os.getenv("IFOOD_TEST_PRODUCT_ID")
 TOKEN_RENEWAL_MARGIN_SECONDS = 60
 
 supabase_client: Optional[Client] = None
@@ -278,11 +279,10 @@ def _extract_merchant_item_id(item: dict[str, Any]) -> Optional[str]:
 
 def _resolve_product_mapping(merchant_id: Optional[str], item: dict[str, Any]) -> Optional[dict[str, Any]]:
     merchant_item_id = _extract_merchant_item_id(item)
-    if not merchant_item_id:
-        return None
 
     try:
-        for mapping_key in (merchant_item_id, "*"):
+        mapping_keys = [key for key in (merchant_item_id, "*") if key]
+        for mapping_key in mapping_keys:
             query = _get_supabase_client().table("ifood_item_mappings").select("*").eq("merchant_item_id", mapping_key)
             if merchant_id:
                 query = query.eq("merchant_id", merchant_id)
@@ -300,6 +300,19 @@ def _resolve_product_mapping(merchant_id: Optional[str], item: dict[str, Any]) -
                         },
                     )
                 return mappings[0]
+
+        if IFOOD_TEST_PRODUCT_ID and "NÃO ENTREGAR" in (item.get("name") or "").upper():
+            _log_ifood_webhook(
+                "produto de teste aplicado por variavel",
+                {
+                    "merchant_id": merchant_id,
+                    "item_name": item.get("name"),
+                    "merchant_item_id": merchant_item_id,
+                    "produto_id": IFOOD_TEST_PRODUCT_ID,
+                },
+            )
+            return {"produto_id": IFOOD_TEST_PRODUCT_ID}
+
         return None
     except Exception:
         return None
@@ -432,6 +445,14 @@ def _sync_ifood_event(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _process_ifood_order_event(event: dict[str, Any], acknowledge: bool = True) -> dict[str, Any]:
+    sync_result = _sync_ifood_event(event)
+    _record_ifood_event(event, "processed")
+    if acknowledge and event.get("fullCode") == "PLACED":
+        _acknowledge_single_event(event["id"])
+    return sync_result
+
+
 def _log_ifood_webhook(message: str, payload: Optional[dict[str, Any]] = None) -> None:
     suffix = ""
     if payload:
@@ -448,8 +469,8 @@ def _acknowledge_ifood_events(event_ids: list[str]) -> dict[str, Any]:
     if not unique_event_ids:
         raise HTTPException(status_code=400, detail="Nenhum event_id informado para acknowledgment.")
 
-    payload = [{"id": event_id} for event_id in unique_event_ids]
-    response = _ifood_request("POST", "/events/v1.0/events/acknowledgment", json=payload)
+    payload = {"acknowledgedEventIds": unique_event_ids}
+    response = _ifood_request("POST", "/order/v1.0/orders:acknowledgment", json=payload)
     _mark_acknowledged(unique_event_ids)
 
     return {
@@ -1456,7 +1477,7 @@ async def receber_evento_ifood(request: Request) -> dict[str, Any]:
     )
 
     try:
-        sync_result = _sync_ifood_event(event)
+        sync_result = _process_ifood_order_event(event)
         _log_ifood_webhook(
             "evento processado",
             {
@@ -1465,9 +1486,6 @@ async def receber_evento_ifood(request: Request) -> dict[str, Any]:
                 "sync_result": sync_result,
             },
         )
-        _record_ifood_event(event, "processed")
-        if event.get("fullCode") == "PLACED":
-            _acknowledge_single_event(event["id"])
         return {
             "received": True,
             "event_id": event["id"],
@@ -1527,6 +1545,44 @@ async def testar_webhook_ifood(request: Request) -> dict[str, Any]:
 def confirmar_recebimento_ifood(payload: IfoodAckRequest) -> dict[str, Any]:
     event_ids = payload.event_ids or _get_pending_ifood_event_ids()
     return _acknowledge_ifood_events(event_ids)
+
+
+@app.post("/api/ifood/polling/process")
+def processar_polling_ifood() -> dict[str, Any]:
+    response = _ifood_request("GET", "/order/v1.0/orders:polling")
+    payload = response.json()
+    events = payload.get("events") if isinstance(payload, dict) else payload
+    if not isinstance(events, list):
+        events = []
+
+    results: list[dict[str, Any]] = []
+    acknowledged_event_ids: list[str] = []
+    for raw_event in events:
+        try:
+            event = IfoodWebhookEvent.model_validate(raw_event).model_dump()
+            sync_result = _process_ifood_order_event(event, acknowledge=False)
+            results.append({"event_id": event["id"], "fullCode": event.get("fullCode"), "sync_result": sync_result})
+            acknowledged_event_ids.append(event["id"])
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, str) else json.dumps(exc.detail, ensure_ascii=False)
+            if isinstance(raw_event, dict):
+                _record_ifood_event(raw_event, "error", error_message=detail)
+            results.append({"event": raw_event, "error": exc.detail})
+        except Exception as exc:
+            if isinstance(raw_event, dict):
+                _record_ifood_event(raw_event, "error", error_message=str(exc))
+            results.append({"event": raw_event, "error": str(exc)})
+
+    ack_result = None
+    if acknowledged_event_ids:
+        ack_result = _acknowledge_ifood_events(acknowledged_event_ids)
+
+    return {
+        "events_received": len(events),
+        "events_acknowledged": acknowledged_event_ids,
+        "ack_result": ack_result,
+        "results": results,
+    }
 
 
 @app.get("/api/ifood/merchants")
